@@ -1,0 +1,68 @@
+# Airflux Domain Glossary
+# LLM System Prompt에 주입되는 도메인 용어 사전
+
+terms:
+  - term: "DAU"
+    aliases: ["Daily Active Users", "일일 활성 사용자"]
+    definition: "하루 동안 앱을 사용한 고유 사용자 수"
+    table: "events.daily_active_users"
+    column: "dau"
+
+  - term: "MAU"
+    aliases: ["Monthly Active Users", "월간 활성 사용자"]
+    definition: "한 달 동안 앱을 사용한 고유 사용자 수"
+    table: "events.monthly_active_users"
+    column: "mau"
+
+  - term: "어트리뷰션"
+    aliases: ["attribution", "기여", "기여도"]
+    definition: "사용자의 앱 설치/전환이 어떤 마케팅 채널에서 발생했는지 판별하는 것"
+    tables: ["attribution.install_events", "attribution.in_app_events"]
+
+  - term: "딥링크"
+    aliases: ["deeplink", "tracking link", "트래킹 링크"]
+    definition: "사용자를 앱의 특정 화면으로 이동시키는 링크"
+    table: "tracking_links.links"
+
+  - term: "포스트백"
+    aliases: ["postback", "콜백"]
+    definition: "어트리뷰션 결과를 광고 매체에 전달하는 서버 간 통신"
+
+  - term: "SKAN"
+    aliases: ["SKAdNetwork", "스캔"]
+    definition: "Apple의 개인정보 보호 어트리뷰션 프레임워크"
+
+  - term: "리타게팅"
+    aliases: ["retargeting", "리인게이지먼트", "reengagement"]
+    definition: "기존 사용자를 다시 앱으로 유도하는 마케팅"
+    columnFilter: "is_reengagement = true"
+
+  - term: "이벤트 카테고리"
+    aliases: ["event category"]
+    definition: "이벤트의 유형 분류"
+    column: "data__eventdata__category"
+    commonValues:
+      "9161": "Install"
+      "9360": "In-App Event"
+      "9362": "Open"
+      "9363": "Deeplink Open"
+
+  - term: "SDK 버전"
+    aliases: ["sdk version", "에스디케이"]
+    definition: "앱에 통합된 Airbridge SDK의 버전"
+    column: "sdk_version"
+
+  - term: "서브도메인"
+    aliases: ["subdomain", "앱 이름", "app name"]
+    definition: "Airbridge에서 앱을 식별하는 고유 이름"
+    column: "app_name"
+
+  - term: "오가닉"
+    aliases: ["organic", "자연유입"]
+    definition: "광고 없이 자연적으로 유입된 설치/이벤트"
+    columnFilter: "is_organic = true"
+
+  - term: "리텐션"
+    aliases: ["retention", "잔존율"]
+    definition: "설치 후 특정 기간이 지난 뒤 앱을 다시 사용하는 비율"
+    commonVariants: ["D1", "D3", "D7", "D14", "D30"]

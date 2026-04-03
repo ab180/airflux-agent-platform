@@ -1,0 +1,44 @@
+# Feature Flags (Round 24 설계)
+# 점진적 기능 출시를 위한 기능 플래그
+
+flags:
+  insight_agent:
+    enabled: false
+    rolloutPercentage: 0
+    description: "Insight Agent (이상 탐지 + 원인 분석)"
+
+  chart_generation:
+    enabled: true
+    rolloutPercentage: 100
+    description: "차트 생성 (Vega-Lite → S3 → Slack)"
+
+  smart_alerts:
+    enabled: false
+    rolloutPercentage: 0
+    description: "자연어로 모니터링 규칙 등록"
+
+  explain_mode:
+    enabled: true
+    rolloutPercentage: 100
+    description: "explain: 접두사로 교육적 결과 해석"
+
+  debug_mode:
+    enabled: true
+    rolloutPercentage: 100
+    description: "debug: 접두사로 내부 처리 과정 표시"
+
+  raw_sql_mode:
+    enabled: false
+    rolloutPercentage: 0
+    allowedUsers: []
+    description: "sql: 접두사로 직접 SQL 실행 (expert only)"
+
+  feedback_collection:
+    enabled: true
+    rolloutPercentage: 100
+    description: "👍/👎 피드백 버튼"
+
+  episodic_memory:
+    enabled: false
+    rolloutPercentage: 0
+    description: "과거 세션 기억 + 유사 질문 검색"

@@ -1,0 +1,90 @@
+# Conversation Templates (대화 템플릿)
+# App Home의 "빠른 실행" 버튼 또는 자연어 "템플릿 보여줘"로 접근
+# 자주 사용되는 분석 패턴을 원클릭으로 실행
+
+templates:
+  - id: daily_health_check
+    name: "📊 일일 앱 건강 체크"
+    description: "DAU, 에러율, 설치수를 한번에 확인"
+    question: "오늘 전체 앱 DAU, 에러율, 설치수 요약해줘"
+    category: monitoring
+    icon: "📊"
+
+  - id: wow_comparison
+    name: "📈 전주 대비 변화"
+    description: "주요 메트릭의 WoW 변화율 확인"
+    question: "전주 대비 DAU, 매출, 설치수 변화율 알려줘"
+    category: comparison
+    icon: "📈"
+
+  - id: sdk_distribution
+    name: "📱 SDK 버전 분포"
+    description: "앱별 SDK 버전 사용 현황"
+    parameters:
+      - name: app_name
+        label: "앱 이름"
+        type: text
+        placeholder: "coupang"
+    question: "{{app_name}} 앱의 SDK 버전별 이벤트 분포 보여줘"
+    category: technical
+    icon: "📱"
+
+  - id: channel_performance
+    name: "📢 채널별 설치 성과"
+    description: "마케팅 채널별 설치 수 Top 10"
+    parameters:
+      - name: app_name
+        label: "앱 이름"
+        type: text
+        placeholder: "coupang"
+      - name: period
+        label: "기간"
+        type: select
+        options: ["지난 7일", "지난 30일", "이번 달"]
+        default: "지난 7일"
+    question: "{{app_name}} 앱의 {{period}} 채널별 설치 수 Top 10 보여줘"
+    category: marketing
+    icon: "📢"
+
+  - id: revenue_trend
+    name: "💰 매출 추이"
+    description: "앱별 월 매출 추이"
+    parameters:
+      - name: app_name
+        label: "앱 이름"
+        type: text
+        placeholder: "coupang"
+    question: "{{app_name}} 앱의 최근 3개월 매출 추이 보여줘"
+    category: business
+    icon: "💰"
+
+  - id: anomaly_scan
+    name: "🔍 이상 탐지 스캔"
+    description: "주요 메트릭에서 이상 패턴 검색"
+    parameters:
+      - name: app_name
+        label: "앱 이름"
+        type: text
+        placeholder: "coupang"
+    question: "{{app_name}} 앱에서 최근 7일간 이상한 패턴 있어?"
+    category: monitoring
+    icon: "🔍"
+
+  - id: platform_breakdown
+    name: "📲 플랫폼별 분석"
+    description: "iOS vs Android DAU/설치 비교"
+    parameters:
+      - name: app_name
+        label: "앱 이름"
+        type: text
+        placeholder: "coupang"
+    question: "{{app_name}} 앱의 iOS vs Android DAU와 설치수 비교해줘"
+    category: technical
+    icon: "📲"
+
+categories:
+  monitoring: "모니터링"
+  comparison: "비교 분석"
+  technical: "기술 분석"
+  marketing: "마케팅 분석"
+  business: "비즈니스 분석"

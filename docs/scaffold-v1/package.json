@@ -1,0 +1,33 @@
+{
+  "name": "airflux-agent",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "eval:golden": "tsx scripts/eval-golden.ts",
+    "lint": "eslint src/",
+    "bootstrap": "bash scripts/bootstrap.sh"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.35.0",
+    "@aws-sdk/client-cloudwatch": "^3.865.0",
+    "@aws-sdk/client-lambda": "^3.865.0",
+    "@aws-sdk/client-s3": "^3.974.0",
+    "@aws-sdk/client-secrets-manager": "^3.864.0",
+    "@aws-sdk/s3-request-presigner": "^3.974.0",
+    "@pulumi/aws": "^7.5.0",
+    "@slack/web-api": "^7.13.0",
+    "mysql2": "^3.14.3",
+    "sst": "3.17.25",
+    "yaml": "^2.6.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "8.10.152",
+    "eslint": "^9.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0",
+    "vitest": "^2.0.0"
+  }
+}

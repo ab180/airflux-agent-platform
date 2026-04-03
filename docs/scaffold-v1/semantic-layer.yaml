@@ -1,0 +1,88 @@
+# Airflux Semantic Layer - Metric Definitions
+# 자연어 질문 → SQL 변환의 핵심 매핑
+
+metrics:
+  dau:
+    name: "Daily Active Users"
+    aliases: ["DAU", "일일 활성 사용자", "하루 사용자", "사용자수", "유저수"]
+    sql: "COUNT(DISTINCT user_id)"
+    table: "events.daily_active_users"
+    preAggregatedColumn: "dau"  # 이미 집계된 칼럼 있으면 직접 사용
+    timeGrain: "daily"
+    dimensions: ["app_name", "platform", "country"]
+    defaultTimeRange: "7d"
+
+  mau:
+    name: "Monthly Active Users"
+    aliases: ["MAU", "월간 활성 사용자"]
+    sql: "COUNT(DISTINCT user_id)"
+    table: "events.monthly_active_users"
+    preAggregatedColumn: "mau"
+    timeGrain: "monthly"
+    dimensions: ["app_name", "platform", "country"]
+
+  install_count:
+    name: "Install Count"
+    aliases: ["설치수", "인스톨", "installs", "설치 수"]
+    sql: "COUNT(*)"
+    table: "attribution.install_events"
+    timeGrain: "daily"
+    dimensions: ["app_name", "channel", "campaign", "country", "is_organic"]
+    defaultFilters:
+      is_organic: "false"  # 기본: 유료 설치만
+
+  revenue:
+    name: "Revenue"
+    aliases: ["매출", "수익", "revenue", "월 매출"]
+    sql: "SUM(revenue_krw)"
+    table: "billing.revenue"
+    timeGrain: "monthly"
+    currency: "KRW"
+    dimensions: ["app_name", "plan_type", "region"]
+
+  event_count:
+    name: "Event Count"
+    aliases: ["이벤트 수", "이벤트 카운트", "events"]
+    sql: "COUNT(*)"
+    table: "events.raw_events"
+    timeGrain: "daily"
+    dimensions: ["app_name", "event_name", "platform", "sdk_version"]
+    defaultTimeRange: "7d"
+
+  retention_d7:
+    name: "Day 7 Retention"
+    aliases: ["7일 리텐션", "D7 리텐션", "d7 retention", "리텐션"]
+    sql: |
+      COUNT(DISTINCT CASE WHEN DATEDIFF(day, install_date, event_date) = 7
+            THEN user_id END) * 100.0 /
+      NULLIF(COUNT(DISTINCT CASE WHEN DATEDIFF(day, install_date, event_date) = 0
+            THEN user_id END), 0)
+    table: "events.user_retention"
+    timeGrain: "daily"
+    unit: "percentage"
+
+  error_rate:
+    name: "Error Rate"
+    aliases: ["에러율", "오류율", "500 에러"]
+    description: "HTTP 5xx 에러 비율"
+    externalSource: "newrelic"
+    dimensions: ["app_name"]
+
+  kafka_lag:
+    name: "Kafka Consumer Lag"
+    aliases: ["카프카 지연", "lag", "컨슈머 랙"]
+    description: "Kafka consumer group의 지연 시간"
+    externalSource: "victoria_metrics"
+    unit: "milliseconds"
+
+# 별칭 맵 (한글 ↔ 영어 ↔ 축약어)
+appAliases:
+  쿠팡: "coupang"
+  무신사: "musinsa"
+  당근: "karrot"
+  토스: "toss"
+
+platformAliases:
+  아이폰: "iOS"
+  안드로이드: "Android"
+  웹: "Web"
