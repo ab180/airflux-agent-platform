@@ -172,7 +172,7 @@ export default function PlaygroundPage() {
                 에이전트에 질문을 입력하세요
               </p>
               <div className="mt-3 flex flex-wrap justify-center gap-2">
-                {["앱 123의 DAU 알려줘", "지금 몇시야?", "hello world"].map(
+                {["앱 123의 DAU 추이 분석해줘", "리텐션이 뭔지 설명해줘", "Airflux 에이전트 목록 보여줘"].map(
                   (example) => (
                     <button
                       key={example}
