@@ -71,13 +71,51 @@ export function Sidebar() {
         })}
       </nav>
 
+      <div className="border-t border-border/50 px-2.5 py-2">
+        <Link
+          href="/chat"
+          className="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[12px] text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+        >
+          <ChatBubbleIcon className="h-3.5 w-3.5 shrink-0" />
+          사용자 채팅 →
+        </Link>
+      </div>
       <div className="border-t border-border/50 px-4 py-3">
         <div className="flex items-center gap-2">
           <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" role="status" aria-label="시스템 정상" />
-          <span className="text-[11px] text-muted-foreground">시스템 정상</span>
+          <span className="text-[11px] text-muted-foreground">관리자 모드</span>
         </div>
+        <UserInfo />
       </div>
     </aside>
+  );
+}
+
+function UserInfo() {
+  const isTeamMode = process.env.NEXT_PUBLIC_AUTH_MODE === "google-sso";
+  if (!isTeamMode) return null;
+  // Lazy-load session component only in team mode to avoid useSession without SessionProvider
+  return <TeamUserInfo />;
+}
+
+function TeamUserInfo() {
+  // Dynamic import to avoid hook call when SessionProvider isn't present
+  const { useSession: useSessionHook, signOut: signOutFn } = require("next-auth/react");
+  const { data: session } = useSessionHook();
+  if (!session?.user) return null;
+
+  return (
+    <div className="mt-2 flex items-center justify-between">
+      <span className="truncate text-[10px] text-muted-foreground/70" title={session.user.email || ""}>
+        {session.user.email}
+      </span>
+      <button
+        onClick={() => signOutFn({ callbackUrl: "/login" })}
+        className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground"
+      >
+        로그아웃
+      </button>
+    </div>
   );
 }
 
@@ -187,6 +225,14 @@ function ChartIcon({ className }: { className?: string }) {
     <svg className={className} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M2 14V6l3.5-4L9 7l3-3 2.5 3" />
       <path d="M2 14h12" />
+    </svg>
+  );
+}
+
+function ChatBubbleIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2.5 3.5h11a1 1 0 011 1v6a1 1 0 01-1 1h-3l-3 2.5v-2.5h-5a1 1 0 01-1-1v-6a1 1 0 011-1z" />
     </svg>
   );
 }

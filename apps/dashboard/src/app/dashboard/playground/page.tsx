@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { ChatMessage } from "@/components/chat/chat-message";
+import type { ChartData } from "@/components/chat/data-chart";
 import { fetchClient, postClient } from "@/lib/client-api";
 
 interface Message {
@@ -13,6 +15,9 @@ interface Message {
   durationMs?: number;
   tokens?: number;
   model?: string;
+  toolCalls?: string[];
+  steps?: number;
+  chartData?: ChartData;
   timestamp: string;
   feedbackSent?: "positive" | "negative";
 }
@@ -72,7 +77,14 @@ export default function PlaygroundPage() {
         error?: string;
         agent?: string;
         traceId?: string;
-        metadata?: { durationMs?: number; model?: string; usage?: { inputTokens?: number; outputTokens?: number } };
+        data?: unknown;
+        metadata?: {
+          durationMs?: number;
+          model?: string;
+          toolCalls?: string[];
+          steps?: number;
+          usage?: { inputTokens?: number; outputTokens?: number };
+        };
       }>("/api/query", {
         query,
         agent: agent || undefined,
@@ -80,6 +92,7 @@ export default function PlaygroundPage() {
         sessionId,
       });
 
+      const usage = data.metadata?.usage;
       const agentMsg: Message = {
         id: crypto.randomUUID(),
         role: "agent",
@@ -87,8 +100,11 @@ export default function PlaygroundPage() {
         agent: data.agent,
         traceId: data.traceId,
         durationMs: data.metadata?.durationMs,
-        tokens: data.metadata?.usage ? ((data.metadata.usage as { inputTokens?: number; outputTokens?: number }).inputTokens || 0) + ((data.metadata.usage as { inputTokens?: number; outputTokens?: number }).outputTokens || 0) : undefined,
-        model: data.metadata?.model as string | undefined,
+        tokens: usage ? (usage.inputTokens || 0) + (usage.outputTokens || 0) : undefined,
+        model: data.metadata?.model,
+        toolCalls: data.metadata?.toolCalls,
+        steps: data.metadata?.steps,
+        chartData: data.data as ChartData | undefined,
         timestamp: new Date().toISOString(),
       };
 
@@ -206,9 +222,17 @@ export default function PlaygroundPage() {
                       )}
                     </div>
                   )}
-                  <p className="whitespace-pre-wrap text-[13px] leading-relaxed">
-                    {msg.text}
-                  </p>
+                  {msg.role === "agent" ? (
+                    <ChatMessage
+                      text={msg.text}
+                      toolCalls={msg.toolCalls}
+                      chartData={msg.chartData}
+                    />
+                  ) : (
+                    <p className="whitespace-pre-wrap text-[13px] leading-relaxed">
+                      {msg.text}
+                    </p>
+                  )}
                   {msg.role === "agent" && msg.traceId && (
                     <FeedbackButtons
                       msg={msg}
