@@ -33,6 +33,11 @@
     - searchLinear
     - searchSlack
     - gitInfo
+    - generateImage
+    - writeFile
+    - getWorkspace
+    - calendarEvents
+    - createPR
   maxSteps: 10
   temperature: 0
   advisor:

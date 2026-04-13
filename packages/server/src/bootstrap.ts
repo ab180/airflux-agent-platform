@@ -515,6 +515,100 @@ function registerBuiltInTools(): void {
     },
   });
 
+  // ─── Creative & productivity tools ──────────────────────────────
+
+  // AI image generation
+  ToolRegistry.register('generateImage', {
+    description: 'AI로 이미지를 생성합니다. 텍스트 프롬프트로 새 이미지를 만들거나, URL의 이미지를 수정합니다.',
+    inputSchema: z.object({
+      prompt: z.string().describe('이미지 설명 (예: "A dashboard showing DAU metrics, modern design")'),
+      aspectRatio: z.enum(['1:1', '16:9', '9:16', '4:3']).optional().describe('비율 (기본 1:1)'),
+    }),
+    execute: async (input: unknown) => {
+      const { prompt, aspectRatio = '1:1' } = input as { prompt: string; aspectRatio?: string };
+      return {
+        note: '이미지 생성 API(OpenAI DALL-E, Gemini 등) 연결 시 동작합니다.',
+        prompt,
+        aspectRatio,
+        alternative: 'renderChart 도구로 데이터 차트를 생성하거나, httpGet으로 외부 이미지를 가져올 수 있습니다.',
+      };
+    },
+  });
+
+  // Write file
+  ToolRegistry.register('writeFile', {
+    description: '프로젝트 내 파일을 작성/수정합니다. settings/ 디렉토리만 허용.',
+    inputSchema: z.object({
+      path: z.string().describe('파일 경로 (settings/ 하위만, 예: "settings/agents.yaml")'),
+      content: z.string().describe('파일 내용'),
+    }),
+    execute: async (input: unknown) => {
+      const { path: filePath, content } = input as { path: string; content: string };
+      if (!filePath.startsWith('settings/')) return { error: 'settings/ 디렉토리만 쓰기가 허용됩니다.' };
+      const { writeFileSync } = await import('fs');
+      const { resolve } = await import('path');
+      const projectRoot = resolve(process.cwd(), '../..');
+      const fullPath = resolve(projectRoot, filePath);
+      if (!fullPath.startsWith(projectRoot)) return { error: 'Path traversal blocked' };
+      try {
+        writeFileSync(fullPath, content, 'utf-8');
+        return { path: filePath, written: true, bytes: content.length };
+      } catch (e) { return { error: e instanceof Error ? e.message : 'Write failed' }; }
+    },
+  });
+
+  // Workspace info
+  ToolRegistry.register('getWorkspace', {
+    description: '현재 작업 디렉토리 및 프로젝트 구조 정보를 반환합니다.',
+    inputSchema: z.object({}),
+    execute: async () => {
+      const { resolve } = await import('path');
+      const { readdirSync } = await import('fs');
+      const root = resolve(process.cwd(), '../..');
+      const topLevel = readdirSync(root).filter(f => !f.startsWith('.') && f !== 'node_modules');
+      return { root, topLevel, packages: ['core', 'server'], apps: ['dashboard'], settings: readdirSync(resolve(root, 'settings')).filter(f => f.endsWith('.yaml') || f.endsWith('.md')) };
+    },
+  });
+
+  // Google Calendar (read-only)
+  ToolRegistry.register('calendarEvents', {
+    description: 'Google Calendar 이벤트를 조회합니다. 구글 캘린더 MCP 연결 시 동작.',
+    inputSchema: z.object({
+      date: z.string().optional().describe('날짜 (예: "2026-04-14", 기본: 오늘)'),
+    }),
+    execute: async (input: unknown) => {
+      const { date } = input as { date?: string };
+      return { note: 'Google Calendar MCP 서버 연결 시 동작합니다. mcp__google-calendar__list-events 도구를 직접 사용하세요.', date: date || 'today' };
+    },
+  });
+
+  // Create PR
+  ToolRegistry.register('createPR', {
+    description: 'GitHub Pull Request를 생성합니다. GITHUB_TOKEN 환경변수 필요.',
+    inputSchema: z.object({
+      title: z.string().describe('PR 제목'),
+      body: z.string().describe('PR 설명'),
+      head: z.string().describe('소스 브랜치'),
+      base: z.string().optional().describe('타겟 브랜치 (기본: main)'),
+      repo: z.string().optional().describe('레포 (기본: ab180/airflux-agent-platform)'),
+    }),
+    execute: async (input: unknown) => {
+      const { title, body, head, base = 'main', repo = 'ab180/airflux-agent-platform' } = input as { title: string; body: string; head: string; base?: string; repo?: string };
+      const token = process.env.GITHUB_TOKEN;
+      if (!token) return { error: 'GITHUB_TOKEN 환경변수가 필요합니다.' };
+      try {
+        const res = await fetch(`https://api.github.com/repos/${repo}/pulls`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, body, head, base }),
+        });
+        if (!res.ok) return { error: `GitHub API ${res.status}: ${await res.text()}` };
+        const pr = await res.json() as { number: number; html_url: string };
+        return { created: true, number: pr.number, url: pr.html_url };
+      } catch (e) { return { error: e instanceof Error ? e.message : 'PR creation failed' }; }
+    },
+  });
+
   // ─── Utility tools ──────────────────────────────────────────────
 
   // Timestamp tool
