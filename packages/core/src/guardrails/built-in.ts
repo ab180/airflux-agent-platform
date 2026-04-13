@@ -136,3 +136,30 @@ export const rowLimit: Guardrail = {
     return { pass: true, guardrail: this.name };
   },
 };
+
+/**
+ * Output guardrail: blocks sensitive data in agent responses.
+ * Pattern from ab180/agent check_output.
+ */
+export const outputSanitizer: Guardrail = {
+  name: 'output-sanitizer',
+  description: 'Blocks internal URLs, secrets, and excessive PII in agent responses',
+  check(input: GuardrailInput): GuardrailResult {
+    if (input.type !== 'output') return { pass: true, guardrail: this.name };
+
+    const sensitivePatterns = [
+      { name: 'API 키', regex: /\b(sk-[a-zA-Z0-9]{20,}|AKIA[A-Z0-9]{16}|ghp_[a-zA-Z0-9]{36})\b/ },
+      { name: '내부 URL', regex: /https?:\/\/[a-z0-9.-]*\.(internal|local|corp|private)(:[0-9]+)?/i },
+      { name: '연결 문자열', regex: /(postgres|mysql|mongodb|redis):\/\/[^\s]+@[^\s]+/ },
+      { name: '내부 IP', regex: /\b(10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)\b/ },
+      { name: 'JWT 토큰', regex: /eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/ },
+    ];
+
+    for (const { name, regex } of sensitivePatterns) {
+      if (regex.test(input.text)) {
+        return { pass: false, reason: `Sensitive data in output: ${name}`, guardrail: this.name };
+      }
+    }
+    return { pass: true, guardrail: this.name };
+  },
+};

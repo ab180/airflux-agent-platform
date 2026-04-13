@@ -70,6 +70,48 @@ export interface AgentConfig {
   verificationMaxRetries?: number;
   /** Advisor model configuration (Claude Advisor tool pattern) */
   advisor?: AdvisorConfig;
+  /** MCP servers this agent can connect to (ab180/agent pattern) */
+  mcpServers?: MCPServerConfig[];
+  /** Subagents this agent can delegate to (Agent-as-Tool pattern) */
+  subagents?: SubagentConfig[];
+}
+
+/**
+ * MCP server configuration for connecting to external data sources.
+ * Supports HTTP (SSE) and stdio transports.
+ */
+export interface MCPServerConfig {
+  /** Unique name for this MCP server */
+  name: string;
+  /** Transport type */
+  transport: 'http' | 'stdio';
+  /** URL for HTTP transport */
+  url?: string;
+  /** Command + args for stdio transport (e.g. ["npx", "@discourse/mcp"]) */
+  command?: string[];
+  /** Auth headers for HTTP transport */
+  headers?: Record<string, string>;
+  /** Environment variables for stdio transport */
+  env?: Record<string, string>;
+}
+
+/**
+ * Subagent configuration — Agent-as-Tool pattern from ab180/agent.
+ * Main agent delegates domain-specific tasks to specialized subagents.
+ */
+export interface SubagentConfig {
+  /** Subagent name (used as tool name) */
+  name: string;
+  /** Description shown to the main agent */
+  description: string;
+  /** System prompt for the subagent */
+  prompt: string;
+  /** Model tier for the subagent (typically cheaper than main) */
+  model: ModelTier;
+  /** Subset of tools the subagent can use */
+  tools: string[];
+  /** Max execution steps */
+  maxSteps?: number;
 }
 
 /**

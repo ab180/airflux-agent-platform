@@ -1,5 +1,5 @@
 import type { Guardrail, GuardrailInput, GuardrailResult } from './types.js';
-import { piiFilter, readOnlySql, queryLength, promptInjection, rowLimit } from './built-in.js';
+import { piiFilter, readOnlySql, queryLength, promptInjection, rowLimit, outputSanitizer } from './built-in.js';
 
 const BUILT_IN_GUARDRAILS: Record<string, Guardrail> = {
   'pii-filter': piiFilter,
@@ -7,6 +7,7 @@ const BUILT_IN_GUARDRAILS: Record<string, Guardrail> = {
   'query-length': queryLength,
   'prompt-injection': promptInjection,
   'row-limit': rowLimit,
+  'output-sanitizer': outputSanitizer,
 };
 
 const customGuardrails = new Map<string, Guardrail>();
