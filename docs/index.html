@@ -67,7 +67,14 @@
 
     /* Step number */
     .step { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--primary-dim); color: var(--primary); font-size: 0.7rem; font-weight: 700; margin-right: 0.5rem; }
+
+    /* Mermaid */
+    .mermaid { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1rem; margin: 0.75rem 0; text-align: center; }
   </style>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ theme: 'dark', startOnLoad: true });
+  </script>
 </head>
 <body>
   <div class="container">
@@ -80,7 +87,7 @@
       <div class="badges">
         <span class="badge"><span class="dot green"></span> 225 Tests</span>
         <span class="badge"><span class="dot violet"></span> 16 Tools</span>
-        <span class="badge"><span class="dot amber"></span> Claude CLI 자동 연동</span>
+        <span class="badge"><span class="dot amber"></span> Claude / Codex CLI 자동 연동</span>
       </div>
     </div>
 
@@ -92,10 +99,12 @@ git clone https://github.com/ab180/airflux-agent-platform.git
 cd airflux-agent-platform
 npm install
 
-<span class="comment"># 2. LLM 연결 (둘 중 하나)</span>
-claude login          <span class="comment"># Claude Code 구독 사용</span>
-<span class="comment"># 또는</span>
-export ANTHROPIC_API_KEY=sk-ant-...
+<span class="comment"># 2. LLM 연결 (택 1)</span>
+claude login          <span class="comment"># Claude Code 구독 (Anthropic)</span>
+codex login           <span class="comment"># Codex CLI 구독 (OpenAI)</span>
+<span class="comment"># 또는 API 키 직접 설정</span>
+export ANTHROPIC_API_KEY=sk-ant-...  <span class="comment"># Anthropic</span>
+export OPENAI_API_KEY=sk-...         <span class="comment"># OpenAI</span>
 
 <span class="comment"># 3. 실행</span>
 npm run dev
@@ -103,8 +112,8 @@ npm run dev
 <span class="comment"># Dashboard: http://localhost:3001</span></pre>
 
       <p style="font-size: 0.85rem; color: var(--muted); margin-top: 0.5rem;">
-        <code class="inline-code">claude login</code>만 하면 API 키 없이 바로 동작합니다.
-        Codex 사용자는 <code class="inline-code">OPENAI_API_KEY</code> 환경변수를 설정하세요.
+        <code class="inline-code">claude login</code> 또는 <code class="inline-code">codex login</code>만 하면 API 키 없이 바로 동작합니다.
+        대시보드 설정 페이지에서 버튼으로 CLI 로그인을 실행할 수도 있습니다.
       </p>
     </div>
 
@@ -138,18 +147,40 @@ npm run dev
     <!-- Architecture -->
     <div class="section">
       <h2>아키텍처</h2>
-      <pre><span class="comment"># 사용자 요청 흐름</span>
-[채팅/Slack/API] → Rate Limit → Guardrails(19패턴) → <strong>airflux-agent</strong>
-                                                         ↕
-                                               서브에이전트 위임
-                                    ┌────────────┬────────────┬──────────────┐
-                                    │ data-query │ code-search│ report-builder│
-                                    │ (SQL/분석) │ (문서 검색) │ (차트/리포트) │
-                                    └────────────┴────────────┴──────────────┘
-                                                         ↕
-                              16 Tools + PII Masking + Cost Tracking
-                                                         ↕
-                              SQLite / PostgreSQL (8+ tables, WAL mode)</pre>
+      <div class="mermaid">
+graph TD
+    A["채팅 / Slack / API"] --> B["Rate Limit"]
+    B --> C["Guardrails (19패턴)"]
+    C --> D["airflux-agent"]
+    D --> E["data-query<br/><small>SQL · 분석</small>"]
+    D --> F["code-search<br/><small>문서 검색</small>"]
+    D --> G["report-builder<br/><small>차트 · 리포트</small>"]
+    E --> H["16 Tools + PII Masking + Cost Tracking"]
+    F --> H
+    G --> H
+    H --> I["SQLite / PostgreSQL"]
+
+    style D fill:#f59e0b,stroke:#b45309,color:#000
+    style E fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    style F fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    style G fill:#8b5cf6,stroke:#6d28d9,color:#fff
+      </div>
+
+      <h3 style="margin-top:1.5rem">LLM 연결 흐름</h3>
+      <div class="mermaid">
+flowchart LR
+    A["대시보드 설정"] --> B{"CLI 감지"}
+    B -->|"claude login"| C["Claude CLI<br/>(Anthropic)"]
+    B -->|"codex login"| D["Codex CLI<br/>(OpenAI)"]
+    B -->|"API 키"| E["직접 입력<br/>(sk-ant / sk-)"]
+    C --> F["LLM 사용 가능"]
+    D --> F
+    E --> F
+
+    style C fill:#8b5cf6,stroke:#6d28d9,color:#fff
+    style D fill:#10b981,stroke:#059669,color:#fff
+    style F fill:#f59e0b,stroke:#b45309,color:#000
+      </div>
     </div>
 
     <!-- Tools -->
@@ -228,7 +259,7 @@ curl -X POST http://localhost:3000/api/query \
           <tr><td>모노레포</td><td>Turborepo</td></tr>
           <tr><td>서버</td><td>Hono (Node.js) — Lambda 호환</td></tr>
           <tr><td>대시보드</td><td>Next.js 16 + shadcn/ui + Tailwind CSS</td></tr>
-          <tr><td>LLM</td><td>AI SDK 6 + Anthropic (Claude CLI 자동 감지)</td></tr>
+          <tr><td>LLM</td><td>AI SDK 6 + Anthropic / OpenAI (Claude · Codex CLI 자동 감지)</td></tr>
           <tr><td>DB</td><td>SQLite (로컬) / PostgreSQL (팀)</td></tr>
           <tr><td>차트</td><td>recharts + react-markdown</td></tr>
           <tr><td>테스트</td><td>Vitest (225+ tests)</td></tr>
