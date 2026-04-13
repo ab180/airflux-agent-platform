@@ -10,6 +10,7 @@ import { feedbackRoute } from './routes/feedback.js';
 import { adminRoutes } from './routes/admin.js';
 import { healthRoute } from './routes/health.js';
 import { slackRoute } from './routes/slack.js';
+import { conversationRoutes } from './routes/conversations.js';
 
 export const app = new Hono();
 
@@ -47,6 +48,9 @@ app.route('/api', feedbackRoute);
 
 // Slack integration (no admin auth — verified by Slack signing secret)
 app.route('/api', slackRoute);
+
+// Conversation API (user-facing, PostgreSQL-backed)
+app.route('/api', conversationRoutes);
 
 // Admin API endpoints (requires auth in production)
 app.use('/api/admin/*', adminAuth);
