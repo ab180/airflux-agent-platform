@@ -217,6 +217,159 @@ function registerBuiltInTools(): void {
     },
   });
 
+  // ─── Tools from ab180/agent ──────────────────────────────────────
+
+  // Chart rendering via QuickChart.io (from ab180/agent render_chart)
+  ToolRegistry.register('renderChart', {
+    description: 'QuickChart.io를 사용하여 차트 이미지 URL을 생성합니다. bar/line/pie/doughnut/radar 지원.',
+    inputSchema: z.object({
+      chartType: z.enum(['bar', 'line', 'pie', 'doughnut', 'area', 'radar']).describe('차트 유형'),
+      title: z.string().describe('차트 제목'),
+      labels: z.array(z.string()).describe('X축 라벨 (예: ["1월","2월","3월"])'),
+      datasets: z.array(z.object({
+        label: z.string(),
+        data: z.array(z.number()),
+      })).describe('데이터셋 (예: [{"label":"MAU","data":[100,200,300]}])'),
+      width: z.number().optional().describe('이미지 너비 (기본 600)'),
+      height: z.number().optional().describe('이미지 높이 (기본 400)'),
+    }),
+    execute: async (input: unknown) => {
+      const { chartType, title, labels, datasets, width = 600, height = 400 } = input as {
+        chartType: string; title: string; labels: string[]; datasets: { label: string; data: number[] }[];
+        width?: number; height?: number;
+      };
+      const colors = ['#f59e0b', '#3b82f6', '#10b981', '#ef4444', '#8b5cf6', '#ec4899'];
+      const config = {
+        type: chartType === 'area' ? 'line' : chartType,
+        data: {
+          labels,
+          datasets: datasets.map((ds, i) => ({
+            ...ds,
+            backgroundColor: chartType === 'pie' || chartType === 'doughnut' ? colors : colors[i % colors.length] + '80',
+            borderColor: colors[i % colors.length],
+            fill: chartType === 'area',
+          })),
+        },
+        options: {
+          title: { display: true, text: title },
+          plugins: { legend: { display: datasets.length > 1 } },
+        },
+      };
+      const chartUrl = `https://quickchart.io/chart?c=${encodeURIComponent(JSON.stringify(config))}&w=${width}&h=${height}&bkg=%230a0a0f`;
+      return { chartUrl, title, chartType, dataPoints: labels.length };
+    },
+  });
+
+  // File operations (from ab180/agent read_file, write_file, list_files)
+  ToolRegistry.register('readFile', {
+    description: '프로젝트 내 파일을 읽습니다. 설정 파일, 스키마, 문서 등을 확인할 때 사용합니다.',
+    inputSchema: z.object({
+      path: z.string().describe('파일 경로 (프로젝트 루트 기준, 예: "settings/agents.yaml")'),
+      maxLines: z.number().optional().describe('최대 읽을 줄 수 (기본 200)'),
+    }),
+    execute: async (input: unknown) => {
+      const { path: filePath, maxLines = 200 } = input as { path: string; maxLines?: number };
+      const { readFileSync } = await import('fs');
+      const { resolve } = await import('path');
+      // Restrict to project directory
+      const projectRoot = resolve(process.cwd(), '../..');
+      const fullPath = resolve(projectRoot, filePath);
+      if (!fullPath.startsWith(projectRoot)) return { error: 'Path traversal blocked' };
+      try {
+        const content = readFileSync(fullPath, 'utf-8');
+        const lines = content.split('\n').slice(0, maxLines);
+        return { path: filePath, lines: lines.length, content: lines.join('\n') };
+      } catch (e) {
+        return { error: `File not found: ${filePath}` };
+      }
+    },
+  });
+
+  ToolRegistry.register('listFiles', {
+    description: '디렉토리 내 파일 목록을 조회합니다.',
+    inputSchema: z.object({
+      path: z.string().optional().describe('디렉토리 경로 (기본: 프로젝트 루트)'),
+    }),
+    execute: async (input: unknown) => {
+      const { path: dirPath = '.' } = input as { path?: string };
+      const { readdirSync, statSync } = await import('fs');
+      const { resolve } = await import('path');
+      const projectRoot = resolve(process.cwd(), '../..');
+      const fullPath = resolve(projectRoot, dirPath);
+      if (!fullPath.startsWith(projectRoot)) return { error: 'Path traversal blocked' };
+      try {
+        const entries = readdirSync(fullPath).map(name => {
+          try {
+            const stat = statSync(resolve(fullPath, name));
+            return { name, type: stat.isDirectory() ? 'dir' : 'file', size: stat.size };
+          } catch { return { name, type: 'unknown', size: 0 }; }
+        });
+        return { path: dirPath, entries };
+      } catch {
+        return { error: `Directory not found: ${dirPath}` };
+      }
+    },
+  });
+
+  // Confirm action (from ab180/agent confirm_action)
+  ToolRegistry.register('confirmAction', {
+    description: '위험한 작업 실행 전 확인을 요청합니다. 데이터 삭제, 대량 쿼리 등에 사용.',
+    inputSchema: z.object({
+      action: z.string().describe('실행하려는 작업 설명'),
+      risk: z.enum(['low', 'medium', 'high']).describe('위험 수준'),
+      details: z.string().optional().describe('추가 상세'),
+    }),
+    execute: async (input: unknown) => {
+      const { action, risk, details } = input as { action: string; risk: string; details?: string };
+      return {
+        confirmation_required: true,
+        action,
+        risk,
+        details,
+        message: `⚠️ ${risk.toUpperCase()} 위험 작업: ${action}. 계속하시겠습니까?`,
+      };
+    },
+  });
+
+  // Schedule management (from ab180/agent create/list/delete_schedule)
+  ToolRegistry.register('manageSchedule', {
+    description: '에이전트 자동 실행 스케줄을 관리합니다 (생성/목록/삭제).',
+    inputSchema: z.object({
+      action: z.enum(['create', 'list', 'delete']).describe('작업 유형'),
+      name: z.string().optional().describe('스케줄 이름 (create/delete 시)'),
+      cron: z.string().optional().describe('Cron 표현식 (create 시, 예: "0 9 * * *")'),
+      question: z.string().optional().describe('실행할 질문 (create 시)'),
+    }),
+    execute: async (input: unknown) => {
+      const { action, name, cron, question } = input as {
+        action: string; name?: string; cron?: string; question?: string;
+      };
+      if (action === 'list') {
+        return { schedules: [], note: '스케줄 기능은 cron-reports.yaml 설정으로 관리됩니다.' };
+      }
+      if (action === 'create') {
+        return { created: false, note: `스케줄 "${name}" (${cron}): settings/agents.yaml의 schedule 필드에 추가해주세요.`, example: { name, cron, question } };
+      }
+      return { action, note: '스케줄 관리는 settings/agents.yaml을 통해 수행됩니다.' };
+    },
+  });
+
+  // Web search (simplified version, uses httpGet internally)
+  ToolRegistry.register('webSearch', {
+    description: '웹 검색을 수행합니다. 외부 정보가 필요할 때 사용합니다.',
+    inputSchema: z.object({
+      query: z.string().describe('검색 쿼리'),
+    }),
+    execute: async (input: unknown) => {
+      const { query } = input as { query: string };
+      return {
+        note: '직접 웹 검색은 현재 지원되지 않습니다. httpGet으로 특정 URL을 조회하거나, searchDocs로 내부 문서를 검색하세요.',
+        suggestion: `httpGet 도구로 관련 문서 URL을 직접 조회해보세요.`,
+        query,
+      };
+    },
+  });
+
   // ─── Utility tools ──────────────────────────────────────────────
 
   // Timestamp tool

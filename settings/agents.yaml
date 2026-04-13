@@ -21,6 +21,12 @@
     - searchDocs
     - getAgentInfo
     - generateChartData
+    - renderChart
+    - readFile
+    - listFiles
+    - confirmAction
+    - manageSchedule
+    - webSearch
   maxSteps: 10
   temperature: 0
   advisor:
