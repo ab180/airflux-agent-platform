@@ -78,16 +78,31 @@ export function isLLMAvailable(): boolean {
   }
 }
 
-export function getLLMStatus(): { available: boolean; source: string } {
+export function getLLMStatus(): { available: boolean; source: string; providers: string[] } {
+  const providers: string[] = [];
+
+  // Check Anthropic
   try {
     getAnthropicApiKey();
-    return { available: true, source: keySource };
+    providers.push('anthropic');
+    return { available: true, source: keySource, providers };
   } catch {
-    if (isClaudeCliAvailable()) {
-      return { available: true, source: 'claude-cli' };
-    }
-    return { available: false, source: 'none' };
+    // no Anthropic key
   }
+
+  // Check Claude CLI
+  if (isClaudeCliAvailable()) {
+    providers.push('claude-cli');
+    return { available: true, source: 'claude-cli', providers };
+  }
+
+  // Check OpenAI (for Codex users)
+  if (process.env.OPENAI_API_KEY) {
+    providers.push('openai');
+    return { available: true, source: 'env:OPENAI_API_KEY', providers };
+  }
+
+  return { available: false, source: 'none', providers };
 }
 
 /** Set API key at runtime (from dashboard UI). Clears cached key first. */

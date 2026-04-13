@@ -14,6 +14,7 @@ interface LLMStatus {
 const SOURCE_LABELS: Record<string, string> = {
   "env:ANTHROPIC_API_KEY": "환경변수 (ANTHROPIC_API_KEY)",
   "env:ANTHROPIC_AUTH_TOKEN": "환경변수 (ANTHROPIC_AUTH_TOKEN)",
+  "env:OPENAI_API_KEY": "환경변수 (OPENAI_API_KEY — Codex)",
   "claude-code": "Claude Code 로그인",
   "claude-code-oauth": "Claude Code OAuth",
   "claude-cli": "Claude CLI (claude login)",
@@ -102,14 +103,15 @@ export function LLMSetup() {
       {!status.available && !showInput && (
         <div className="rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2.5">
           <p className="text-[12px] text-muted-foreground">
-            AI 에이전트(assistant-agent)를 사용하려면 Anthropic API 키가 필요합니다.
+            AI 에이전트를 사용하려면 LLM 연결이 필요합니다.
           </p>
           <div className="mt-2 space-y-1.5 text-[11px] text-muted-foreground">
             <p>설정 방법:</p>
             <ol className="ml-4 list-decimal space-y-0.5">
               <li>아래 "API 키 설정" 버튼으로 직접 입력</li>
-              <li>터미널에서 <code className="rounded bg-muted/50 px-1 py-0.5 font-mono text-[10px]">claude login</code> 실행 (Claude Code SSO)</li>
-              <li>환경변수: <code className="rounded bg-muted/50 px-1 py-0.5 font-mono text-[10px]">ANTHROPIC_API_KEY=sk-ant-...</code></li>
+              <li><code className="rounded bg-muted/50 px-1 py-0.5 font-mono text-[10px]">claude login</code> — Claude Code SSO (Anthropic)</li>
+              <li><code className="rounded bg-muted/50 px-1 py-0.5 font-mono text-[10px]">ANTHROPIC_API_KEY=sk-ant-...</code> — Anthropic 직접</li>
+              <li><code className="rounded bg-muted/50 px-1 py-0.5 font-mono text-[10px]">OPENAI_API_KEY=sk-...</code> — OpenAI / Codex 사용자</li>
             </ol>
           </div>
           <Button size="sm" className="mt-3 h-7 text-[11px]" onClick={() => setShowInput(true)}>
