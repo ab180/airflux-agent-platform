@@ -1,37 +1,7 @@
 # Agent Routing Rules
-# 질문의 키워드/패턴으로 에이전트를 자동 선택
+# 단일 에이전트 모드: 모든 요청이 airflux-agent로 라우팅
+# airflux-agent가 내부적으로 서브에이전트(data-query, code-search, report-builder)에 위임
 
-rules:
-  # Assistant agent: LLM이 필요한 자연어 질문
-  - agent: assistant-agent
-    priority: 10
-    keywords:
-      - "계산"
-      - "알려"
-      - "설명"
-      - "분석"
-      - "요약"
-      - "번역"
-      - "작성"
-      - "추천"
-      - "비교"
-      - "왜"
-      - "어떻게"
-      - "무엇"
-      - "몇"
-    patterns:
-      - "\\b(DAU|MAU|리텐션|전환율)\\b"
-      - "\\b(앱|어플|서비스)\\s*\\d+"
+rules: []
 
-  # Echo agent: 테스트/디버깅 용도
-  - agent: echo-agent
-    priority: 1
-    keywords:
-      - "echo"
-      - "ping"
-      - "test"
-      - "테스트"
-      - "에코"
-
-# Fallback: 매칭되는 규칙이 없으면 이 에이전트 사용
-fallback: echo-agent
+fallback: airflux-agent

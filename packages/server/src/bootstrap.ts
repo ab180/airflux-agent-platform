@@ -57,12 +57,12 @@ export async function bootstrap(settingsPath?: string): Promise<void> {
     const agents = AgentRegistry.list();
     logger.info("Agents initialized", { count: agents.length, names: agents.map(a => a.name) });
   } catch (e) {
-    logger.warn('No agents config, using default echo agent');
+    logger.warn('No agents config, using default airflux agent');
     await AgentRegistry.initialize([
       {
-        name: 'echo-agent',
+        name: 'airflux-agent',
         enabled: true,
-        description: 'Echo agent for testing',
+        description: 'Airflux AI Assistant',
         model: 'default',
         skills: [],
         tools: [],
@@ -141,15 +141,83 @@ export function getRouter(): AgentRouter {
 }
 
 function registerBuiltInTools(): void {
-  // Echo tool (for testing)
-  ToolRegistry.register('echo', {
-    description: 'Echoes back the input',
-    inputSchema: z.object({ message: z.string() }),
+  // ─── Airflux-specific tools ────────────────────────────────────
+
+  // Data query tool — routes to optimal table based on cost tier
+  ToolRegistry.register('queryData', {
+    description: '데이터 카탈로그 기반 테이블 라우팅 + SQL 생성. 비용 티어(tens→billions) 자동 선택. 질문에 맞는 최적 테이블과 SQL을 제안합니다.',
+    inputSchema: z.object({
+      question: z.string().describe('데이터 관련 질문 (예: "앱 123의 DAU 추이")'),
+      appId: z.string().optional().describe('앱 ID (billions 테이블 필요 시 필수)'),
+      dateRange: z.string().optional().describe('날짜 범위 (예: "최근 7일", "2026-04-01~2026-04-07")'),
+    }),
     execute: async (input: unknown) => {
-      const { message } = input as { message: string };
-      return { echo: message };
+      const { question, appId, dateRange } = input as { question: string; appId?: string; dateRange?: string };
+      // Route to optimal table tier
+      const needsBillions = /이벤트|event|client_events/i.test(question);
+      const needsMillions = /API|inference|log/i.test(question);
+      if ((needsBillions || needsMillions) && !appId) {
+        return { error: '역질의 필요: billions/millions 테이블 사용을 위해 app_id를 지정해주세요.', suggestion: '예: "앱 123의 DAU 추이"' };
+      }
+      const tier = needsBillions ? 'billions' : needsMillions ? 'millions' : 'tens/hundreds';
+      return {
+        routing: { tier, requiresAppId: needsBillions || needsMillions, dateRange: dateRange || '미지정' },
+        recommendation: `${tier} 테이블을 사용하여 "${question}" 분석을 수행합니다.`,
+        note: 'Snowflake 연결 시 실제 SQL이 실행됩니다. 현재는 라우팅 결과만 반환합니다.',
+      };
     },
   });
+
+  // Document search tool
+  ToolRegistry.register('searchDocs', {
+    description: 'Airflux 설계 문서, 스키마 파일, CLAUDE.md를 검색합니다.',
+    inputSchema: z.object({
+      query: z.string().describe('검색 키워드 (예: "text-to-sql", "guardrail", "routing")'),
+    }),
+    execute: async (input: unknown) => {
+      const { query } = input as { query: string };
+      const { execSync } = await import('child_process');
+      try {
+        const results = execSync(
+          `grep -rl "${query}" docs/design/ settings/ CLAUDE.md 2>/dev/null | head -10`,
+          { encoding: 'utf-8', timeout: 5000, cwd: process.cwd() + '/../..' },
+        ).trim();
+        const files = results ? results.split('\n') : [];
+        return { query, matchedFiles: files, count: files.length };
+      } catch {
+        return { query, matchedFiles: [], count: 0 };
+      }
+    },
+  });
+
+  // Agent/tool/skill info tool
+  ToolRegistry.register('getAgentInfo', {
+    description: '등록된 에이전트, 도구, 스킬의 현재 상태를 조회합니다.',
+    inputSchema: z.object({}),
+    execute: async () => ({
+      agents: AgentRegistry.list().map(a => ({ name: a.name, enabled: a.isEnabled(), model: a.config.model, tools: a.getToolNames().length })),
+      tools: ToolRegistry.list(),
+      skills: SkillRegistry.list().map(s => ({ name: s.name, description: s.description })),
+    }),
+  });
+
+  // Chart data generator
+  ToolRegistry.register('generateChartData', {
+    description: 'recharts 호환 차트 데이터를 생성합니다. 프론트엔드에서 바로 렌더링됩니다.',
+    inputSchema: z.object({
+      type: z.enum(['line', 'bar', 'pie']).describe('차트 유형'),
+      title: z.string().optional().describe('차트 제목'),
+      data: z.array(z.record(z.unknown())).describe('데이터 배열 (예: [{date: "4/1", value: 100}])'),
+      xKey: z.string().describe('X축 키'),
+      yKeys: z.array(z.string()).describe('Y축 키(들)'),
+    }),
+    execute: async (input: unknown) => {
+      const { type, title, data, xKey, yKeys } = input as { type: string; title?: string; data: unknown[]; xKey: string; yKeys: string[] };
+      return { type, title, data, xKey, yKeys };
+    },
+  });
+
+  // ─── Utility tools ──────────────────────────────────────────────
 
   // Timestamp tool
   ToolRegistry.register('getTimestamp', {

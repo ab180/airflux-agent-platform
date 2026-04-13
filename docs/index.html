@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Airflux Agent Platform — AI 에이전트 관리 플랫폼</title>
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --card: #12121a;
+      --border: #1e1e2e;
+      --text: #e4e4e7;
+      --muted: #71717a;
+      --primary: #f59e0b;
+      --primary-dim: rgba(245, 158, 11, 0.15);
+      --violet: #8b5cf6;
+      --green: #10b981;
+      --red: #ef4444;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; line-height: 1.6; }
+    .container { max-width: 800px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+    /* Hero */
+    .hero { text-align: center; padding: 4rem 0 3rem; }
+    .hero-logo { display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 14px; background: var(--primary-dim); margin-bottom: 1.5rem; }
+    .hero-logo span { font-size: 24px; font-weight: 700; color: var(--primary); }
+    .hero h1 { font-size: 2.2rem; font-weight: 700; letter-spacing: -0.03em; }
+    .hero h1 em { font-style: normal; color: var(--primary); }
+    .hero p { color: var(--muted); font-size: 1.05rem; margin-top: 0.75rem; max-width: 500px; margin-left: auto; margin-right: auto; }
+
+    /* Badges */
+    .badges { display: flex; gap: 0.5rem; justify-content: center; margin-top: 1.5rem; flex-wrap: wrap; }
+    .badge { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.7rem; font-weight: 600; padding: 0.25rem 0.6rem; border-radius: 6px; border: 1px solid var(--border); background: var(--card); }
+    .badge .dot { width: 6px; height: 6px; border-radius: 50%; }
+    .badge .dot.green { background: var(--green); }
+    .badge .dot.violet { background: var(--violet); }
+    .badge .dot.amber { background: var(--primary); }
+
+    /* Quick Start */
+    .section { margin-top: 3rem; }
+    .section h2 { font-size: 1.3rem; font-weight: 600; margin-bottom: 1rem; letter-spacing: -0.02em; }
+    .section h3 { font-size: 1rem; font-weight: 600; margin: 1.5rem 0 0.5rem; color: var(--muted); }
+
+    pre { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem; overflow-x: auto; font-size: 0.85rem; font-family: 'SF Mono', 'Fira Code', monospace; line-height: 1.7; margin: 0.75rem 0; }
+    code { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.85em; }
+    .inline-code { background: var(--card); border: 1px solid var(--border); padding: 0.15rem 0.4rem; border-radius: 4px; }
+    .comment { color: var(--muted); }
+
+    /* Cards grid */
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem; margin-top: 1rem; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem; }
+    .card h4 { font-size: 0.85rem; font-weight: 600; margin-bottom: 0.25rem; }
+    .card p { font-size: 0.78rem; color: var(--muted); }
+    .card .mono { font-family: 'SF Mono', monospace; font-size: 0.75rem; color: var(--primary); }
+
+    /* Table */
+    table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 0.82rem; }
+    th { text-align: left; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); }
+    td { padding: 0.5rem 0.75rem; border-bottom: 1px solid rgba(30,30,46,0.5); }
+    td code { font-size: 0.78rem; color: var(--violet); }
+
+    /* Footer */
+    .footer { margin-top: 4rem; padding: 2rem 0; border-top: 1px solid var(--border); text-align: center; color: var(--muted); font-size: 0.8rem; }
+    a { color: var(--primary); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* Step number */
+    .step { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--primary-dim); color: var(--primary); font-size: 0.7rem; font-weight: 700; margin-right: 0.5rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <!-- Hero -->
+    <div class="hero">
+      <div class="hero-logo"><span>A</span></div>
+      <h1><em>Airflux</em> Agent Platform</h1>
+      <p>AI 에이전트를 등록하고, 설정하고, 모니터링하는 플랫폼. 데이터 분석부터 리포트 생성까지.</p>
+      <div class="badges">
+        <span class="badge"><span class="dot green"></span> 225 Tests</span>
+        <span class="badge"><span class="dot violet"></span> 16 Tools</span>
+        <span class="badge"><span class="dot amber"></span> Claude CLI 자동 연동</span>
+      </div>
+    </div>
+
+    <!-- Quick Start -->
+    <div class="section">
+      <h2>Quick Start</h2>
+      <pre><span class="comment"># 1. Clone & Install</span>
+git clone https://github.com/ab180/airflux-agent-platform.git
+cd airflux-agent-platform
+npm install
+
+<span class="comment"># 2. LLM 연결 (둘 중 하나)</span>
+claude login          <span class="comment"># Claude Code 구독 사용</span>
+<span class="comment"># 또는</span>
+export ANTHROPIC_API_KEY=sk-ant-...
+
+<span class="comment"># 3. 실행</span>
+npm run dev
+<span class="comment"># Server:    http://localhost:3000</span>
+<span class="comment"># Dashboard: http://localhost:3001</span></pre>
+
+      <p style="font-size: 0.85rem; color: var(--muted); margin-top: 0.5rem;">
+        <code class="inline-code">claude login</code>만 하면 API 키 없이 바로 동작합니다.
+        Codex 사용자는 <code class="inline-code">OPENAI_API_KEY</code> 환경변수를 설정하세요.
+      </p>
+    </div>
+
+    <!-- What you can do -->
+    <div class="section">
+      <h2>할 수 있는 것</h2>
+      <div class="cards">
+        <div class="card">
+          <h4>채팅으로 질문</h4>
+          <p>에이전트에 자연어로 질문하면 도구를 자동 선택하여 답변</p>
+          <div class="mono" style="margin-top:0.5rem">/chat</div>
+        </div>
+        <div class="card">
+          <h4>데이터 분석</h4>
+          <p>비용 최적화된 SQL 생성, 메트릭 계산, 차트 시각화</p>
+          <div class="mono" style="margin-top:0.5rem">data-query 서브에이전트</div>
+        </div>
+        <div class="card">
+          <h4>문서 검색</h4>
+          <p>43개 설계 문서, 스키마 파일, CLAUDE.md 검색</p>
+          <div class="mono" style="margin-top:0.5rem">code-search 서브에이전트</div>
+        </div>
+        <div class="card">
+          <h4>에이전트 관리</h4>
+          <p>대시보드에서 에이전트 생성/수정/삭제, 모니터링, 비용 추적</p>
+          <div class="mono" style="margin-top:0.5rem">/dashboard</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Architecture -->
+    <div class="section">
+      <h2>아키텍처</h2>
+      <pre><span class="comment"># 사용자 요청 흐름</span>
+[채팅/Slack/API] → Rate Limit → Guardrails(19패턴) → <strong>airflux-agent</strong>
+                                                         ↕
+                                               서브에이전트 위임
+                                    ┌────────────┬────────────┬──────────────┐
+                                    │ data-query │ code-search│ report-builder│
+                                    │ (SQL/분석) │ (문서 검색) │ (차트/리포트) │
+                                    └────────────┴────────────┴──────────────┘
+                                                         ↕
+                              16 Tools + PII Masking + Cost Tracking
+                                                         ↕
+                              SQLite / PostgreSQL (8+ tables, WAL mode)</pre>
+    </div>
+
+    <!-- Tools -->
+    <div class="section">
+      <h2>도구 (16개)</h2>
+      <table>
+        <thead>
+          <tr><th>도구</th><th>설명</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>queryData</code></td><td>비용 티어 기반 테이블 라우팅 + SQL 생성</td></tr>
+          <tr><td><code>searchDocs</code></td><td>설계 문서/스키마 파일 검색</td></tr>
+          <tr><td><code>getAgentInfo</code></td><td>에이전트/도구/스킬 상태 조회</td></tr>
+          <tr><td><code>generateChartData</code></td><td>recharts 호환 차트 데이터 생성</td></tr>
+          <tr><td><code>getSemanticLayer</code></td><td>데이터 웨어하우스 스키마 조회</td></tr>
+          <tr><td><code>lookupTerm</code></td><td>도메인 용어 사전 (DAU, MAU, 리텐션 등)</td></tr>
+          <tr><td><code>normalizeTime</code></td><td>한국어 시간 표현 → 날짜 범위 변환</td></tr>
+          <tr><td><code>calculate</code></td><td>수학 계산 (안전한 평가)</td></tr>
+          <tr><td><code>httpGet</code></td><td>외부 URL 조회 (SSRF 방어)</td></tr>
+          <tr><td><code>getTimestamp</code></td><td>현재 시간 (ISO + 한국어)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Features -->
+    <div class="section">
+      <h2>주요 기능</h2>
+
+      <h3><span class="step">1</span> 보안</h3>
+      <p style="font-size:0.85rem; color:var(--muted)">19패턴 prompt injection 차단, PII 마스킹, SSRF 방어, 출력 가드레일, timing-safe 인증</p>
+
+      <h3><span class="step">2</span> AI 모니터링</h3>
+      <p style="font-size:0.85rem; color:var(--muted)">per-token 비용 추적, 일별 예산 한도, 실행 상태 머신, 크래시 복구</p>
+
+      <h3><span class="step">3</span> Slack 연동</h3>
+      <p style="font-size:0.85rem; color:var(--muted)">Event API + Slash command, 스레드 세션, guardrail 적용</p>
+
+      <h3><span class="step">4</span> Advisor 패턴</h3>
+      <p style="font-size:0.85rem; color:var(--muted)">Sonnet(저비용) executor + Opus(고품질) advisor 조합</p>
+
+      <h3><span class="step">5</span> Docker + PostgreSQL</h3>
+      <p style="font-size:0.85rem; color:var(--muted)"><code class="inline-code">docker compose up</code>으로 PostgreSQL + 서버 즉시 실행. 채팅 히스토리 무제한.</p>
+    </div>
+
+    <!-- Docker -->
+    <div class="section">
+      <h2>Docker 실행</h2>
+      <pre><span class="comment"># PostgreSQL + 서버 동시 실행</span>
+docker compose up --build
+
+<span class="comment"># 또는 PostgreSQL만 띄우고 로컬 개발</span>
+docker compose up postgres -d
+DATABASE_URL=postgres://airflux:airflux@localhost:5432/airflux npm run dev</pre>
+    </div>
+
+    <!-- API -->
+    <div class="section">
+      <h2>API</h2>
+      <pre><span class="comment"># 에이전트에 질문</span>
+curl -X POST http://localhost:3000/api/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "DAU가 뭐야?"}'
+
+<span class="comment"># 디버그 모드</span>
+curl -X POST http://localhost:3000/api/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "debug:리텐션 설명해줘"}'</pre>
+    </div>
+
+    <!-- Tech Stack -->
+    <div class="section">
+      <h2>기술 스택</h2>
+      <table>
+        <thead><tr><th>레이어</th><th>기술</th></tr></thead>
+        <tbody>
+          <tr><td>모노레포</td><td>Turborepo</td></tr>
+          <tr><td>서버</td><td>Hono (Node.js) — Lambda 호환</td></tr>
+          <tr><td>대시보드</td><td>Next.js 16 + shadcn/ui + Tailwind CSS</td></tr>
+          <tr><td>LLM</td><td>AI SDK 6 + Anthropic (Claude CLI 자동 감지)</td></tr>
+          <tr><td>DB</td><td>SQLite (로컬) / PostgreSQL (팀)</td></tr>
+          <tr><td>차트</td><td>recharts + react-markdown</td></tr>
+          <tr><td>테스트</td><td>Vitest (225+ tests)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <p>MIT License &copy; 2026 AB180</p>
+      <p style="margin-top:0.5rem">
+        <a href="https://github.com/ab180/airflux-agent-platform">GitHub</a> &middot;
+        <a href="https://github.com/ab180/airflux-agent-platform/blob/main/CONTRIBUTING.md">Contributing</a> &middot;
+        <a href="https://github.com/ab180/airflux-agent-platform/blob/main/docs/STATUS.md">Status</a>
+      </p>
+    </div>
+
+  </div>
+</body>
+</html>

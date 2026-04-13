@@ -1,18 +1,10 @@
-- name: echo-agent
+# Airflux Agent — 메인 에이전트 (모든 요청의 진입점)
+- name: airflux-agent
   enabled: true
-  description: Echo agent for testing — returns the input as-is
+  description: 'AB180 Airflux AI 어시스턴트 — 데이터 분석, 문서 검색, 리포트 생성'
   model: default
   skills: []
   tools:
-    - echo
-    - getTimestamp
-- name: assistant-agent
-  enabled: true
-  description: LLM-powered AI assistant with tool access
-  model: default
-  skills: []
-  tools:
-    - echo
     - getTimestamp
     - calculate
     - formatJson
@@ -23,25 +15,67 @@
     - lookupTerm
     - findTermsInQuery
     - getSemanticLayer
-  maxSteps: 5
+    - getTableSchema
+    - getMetricSQL
+    - queryData
+    - searchDocs
+    - getAgentInfo
+    - generateChartData
+  maxSteps: 10
   temperature: 0
-- name: data-agent
-  enabled: false
-  description: Data analysis agent (requires Snowflake connection)
-  model: powerful
+  advisor:
+    model: powerful
+    maxUses: 3
+  subagents:
+    - name: data-query
+      description: '데이터 조회/분석 전문 서브에이전트. SQL 생성, 비용 최적화, 메트릭 계산.'
+      prompt: '데이터 분석 전문가. 테이블 우선순위: tens > hundreds > millions > billions. billions는 app_id + event_date 필수.'
+      model: default
+      tools: [getSemanticLayer, getTableSchema, getMetricSQL, queryData, normalizeTime, calculate]
+    - name: code-search
+      description: 'Airflux 레포 코드/설계 문서 검색 서브에이전트.'
+      prompt: 'Airflux 프로젝트의 설계 문서, CLAUDE.md, 스키마 파일을 검색합니다.'
+      model: fast
+      tools: [searchDocs, getAgentInfo, getSystemInfo]
+    - name: report-builder
+      description: '차트/리포트 생성 서브에이전트.'
+      prompt: '데이터를 recharts 호환 차트 데이터 또는 마크다운 테이블로 변환합니다.'
+      model: default
+      tools: [generateChartData, calculate, formatJson]
+
+# Assistant Agent — LLM 범용 대화
+- name: assistant-agent
+  enabled: true
+  description: 'LLM-powered AI assistant with tool access'
+  model: default
   skills: []
   tools:
+    - getTimestamp
+    - calculate
+    - formatJson
+    - httpGet
+    - getSystemInfo
+    - normalizeTime
+    - extractTimeFromQuery
+    - lookupTerm
+    - findTermsInQuery
     - getSemanticLayer
     - getTableSchema
     - getMetricSQL
-    - normalizeTime
-    - lookupTerm
-- name: research-agent
+  maxSteps: 5
+  temperature: 0
+
+# 비활성 에이전트
+- name: data-agent
   enabled: false
-  description: Anomaly detection and research agent
+  description: 'Data analysis agent (requires Snowflake connection)'
   model: powerful
   skills: []
-  tools:
-    - httpGet
-    - getSystemInfo
-    - calculate
+  tools: [getSemanticLayer, getTableSchema, getMetricSQL, normalizeTime, lookupTerm]
+
+- name: research-agent
+  enabled: false
+  description: 'Anomaly detection and research agent'
+  model: powerful
+  skills: []
+  tools: [httpGet, getSystemInfo, calculate]
