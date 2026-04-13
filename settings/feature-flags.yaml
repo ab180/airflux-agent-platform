@@ -1,0 +1,23 @@
+# Feature Flags
+# 에이전트/기능별 활성화 제어
+
+flags:
+  echo_agent_enabled:
+    enabled: true
+    description: "에코 에이전트 활성화"
+    rollout: 100
+
+  data_agent_enabled:
+    enabled: false
+    description: "데이터 에이전트 (Phase 1)"
+    rollout: 0
+
+  research_agent_enabled:
+    enabled: false
+    description: "리서치 에이전트 (Phase 1)"
+    rollout: 0
+
+  admin_dashboard:
+    enabled: true
+    description: "관리자 대시보드 접근"
+    rollout: 100

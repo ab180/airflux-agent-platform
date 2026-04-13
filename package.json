@@ -1,0 +1,26 @@
+{
+  "name": "airflux-agent-platform",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "test": "turbo test",
+    "lint": "turbo lint",
+    "clean": "turbo clean",
+    "dev:server": "npm run dev --workspace=@airflux/server",
+    "dev:dashboard": "npm run dev --workspace=dashboard",
+    "query": "curl -s -X POST http://localhost:3000/api/query -H 'Content-Type: application/json' -d"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.0",
+    "typescript": "^5.8.0"
+  },
+  "packageManager": "npm@10.9.0",
+  "engines": {
+    "node": ">=20"
+  }
+}

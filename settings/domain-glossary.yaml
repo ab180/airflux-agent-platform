@@ -1,0 +1,66 @@
+# Domain Glossary — 도메인 용어 사전
+# 약어, 오타, 동의어를 표준 용어로 매핑
+
+terms:
+  # 메트릭
+  DAU:
+    canonical: "Daily Active Users"
+    aliases: ["일간 활성 사용자", "일활", "데일리 액티브"]
+    description: "하루 동안 앱을 사용한 고유 사용자 수"
+
+  MAU:
+    canonical: "Monthly Active Users"
+    aliases: ["월간 활성 사용자", "월활", "먼슬리 액티브"]
+    description: "한 달 동안 앱을 사용한 고유 사용자 수"
+
+  WAU:
+    canonical: "Weekly Active Users"
+    aliases: ["주간 활성 사용자", "주활"]
+    description: "일주일 동안 앱을 사용한 고유 사용자 수"
+
+  리텐션:
+    canonical: "Retention Rate"
+    aliases: ["잔존율", "retention", "리텐션율", "리텐션 레이트"]
+    description: "특정 기간 후 앱에 복귀한 사용자 비율"
+
+  전환율:
+    canonical: "Conversion Rate"
+    aliases: ["CVR", "컨버전", "conversion", "전환"]
+    description: "특정 행동을 완료한 사용자 비율"
+
+  ARPU:
+    canonical: "Average Revenue Per User"
+    aliases: ["유저당 매출", "인당 매출", "arpu"]
+    description: "사용자당 평균 매출"
+
+  LTV:
+    canonical: "Lifetime Value"
+    aliases: ["고객 생애 가치", "라이프타임 밸류", "ltv"]
+    description: "한 사용자가 생애 동안 창출하는 총 매출"
+
+  # 이벤트
+  앱설치:
+    canonical: "App Install"
+    aliases: ["설치", "install", "인스톨", "앱 설치"]
+    description: "앱 설치 이벤트"
+
+  가입:
+    canonical: "Sign Up"
+    aliases: ["회원가입", "signup", "sign-up", "등록"]
+    description: "회원 가입 이벤트"
+
+  구매:
+    canonical: "Purchase"
+    aliases: ["결제", "purchase", "주문", "매출"]
+    description: "인앱 결제 이벤트"
+
+  # 데이터 소스
+  스노우플레이크:
+    canonical: "Snowflake"
+    aliases: ["snowflake", "SF", "스플"]
+    description: "데이터 웨어하우스"
+
+  에어브릿지:
+    canonical: "Airbridge"
+    aliases: ["airbridge", "AB", "에어브릿지"]
+    description: "모바일 마케팅 분석 플랫폼"
