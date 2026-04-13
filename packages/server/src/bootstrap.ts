@@ -105,6 +105,21 @@ export async function bootstrap(settingsPath?: string): Promise<void> {
   } catch {
     // execution_state table may not exist yet on first run
   }
+
+  // 8. PostgreSQL initialization (if DATABASE_URL is set)
+  try {
+    const { isPostgresAvailable, initPgTables } = await import('./store/pg.js');
+    if (isPostgresAvailable()) {
+      await initPgTables();
+      logger.info("PostgreSQL initialized (conversations, messages, cost_entries)");
+    } else {
+      logger.info("PostgreSQL not configured — using SQLite for legacy stores");
+    }
+  } catch (e) {
+    logger.warn("PostgreSQL init failed, continuing with SQLite", {
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
 }
 
 let _router: AgentRouter | null = null;

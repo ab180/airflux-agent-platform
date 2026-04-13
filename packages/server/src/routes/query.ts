@@ -155,6 +155,15 @@ queryRoute.post('/query', async (c) => {
       };
     }
 
+    // Output guardrail: check for sensitive data in response (ab180/agent check_output pattern)
+    if (result.text) {
+      const outputCheck = runGuardrails(['output-sanitizer'], { text: result.text, type: 'output' });
+      if (!outputCheck.pass) {
+        const reason = outputCheck.results.find(r => !r.pass)?.reason || 'Output blocked';
+        result.text = `[응답이 보안 정책에 의해 필터링되었습니다: ${reason}]`;
+      }
+    }
+
     // Post-mask PII in response
     let piiMasked = false;
     if (result.text) {

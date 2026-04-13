@@ -1,18 +1,37 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: airflux
+      POSTGRES_USER: airflux
+      POSTGRES_PASSWORD: airflux
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflux"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   server:
     build: .
     ports:
       - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
       - PORT=3000
       - NODE_ENV=production
+      - DATABASE_URL=postgres://airflux:airflux@postgres:5432/airflux
       # - ANTHROPIC_API_KEY=sk-ant-...
       # - ADMIN_API_KEY=your-secret
       # - SLACK_BOT_TOKEN=xoxb-...
       # - SLACK_SIGNING_SECRET=...
     volumes:
-      - airflux-data:/app/data
       - ./settings:/app/settings
 
 volumes:
-  airflux-data:
+  pgdata:

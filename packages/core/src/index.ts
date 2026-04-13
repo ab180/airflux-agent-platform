@@ -12,6 +12,8 @@ export type {
   LLMProvider,
   ModelTier,
   AdvisorConfig,
+  MCPServerConfig,
+  SubagentConfig,
 } from './types/agent.js';
 
 // Errors
