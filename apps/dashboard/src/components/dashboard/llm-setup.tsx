@@ -141,55 +141,13 @@ export function LLMSetup() {
         </div>
       )}
 
-      {/* CLI login guide */}
+      {/* CLI login */}
       {activeTab === "cli" && (
         <div className="rounded-md border border-primary/20 bg-primary/[0.02] px-3 py-3 space-y-3">
-          <div className="text-[12px] font-medium">터미널에서 로그인하세요</div>
+          <div className="text-[12px] font-medium">CLI로 로그인</div>
 
-          {/* Claude */}
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-medium text-violet-400">Claude (Anthropic)</span>
-              <Badge variant="outline" className="text-[8px]">추천</Badge>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <code className="flex-1 rounded-md bg-muted/50 px-2.5 py-1.5 font-mono text-[11px]">
-                claude login
-              </code>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 shrink-0 text-[10px]"
-                onClick={() => copyCommand("claude login")}
-              >
-                {copied === "claude login" ? "✓" : "복사"}
-              </Button>
-            </div>
-            <p className="text-[10px] text-muted-foreground">
-              Claude Code 구독으로 자동 인증. API 키 불필요.
-            </p>
-          </div>
-
-          {/* Codex */}
-          <div className="space-y-1.5">
-            <span className="text-[11px] font-medium text-emerald-400">Codex (OpenAI)</span>
-            <div className="flex items-center gap-1.5">
-              <code className="flex-1 rounded-md bg-muted/50 px-2.5 py-1.5 font-mono text-[11px]">
-                codex login
-              </code>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 shrink-0 text-[10px]"
-                onClick={() => copyCommand("codex login")}
-              >
-                {copied === "codex login" ? "✓" : "복사"}
-              </Button>
-            </div>
-            <p className="text-[10px] text-muted-foreground">
-              OpenAI 구독 또는 API 키 필요. 로그인 후 OPENAI_API_KEY 환경변수 설정.
-            </p>
-          </div>
+          <CliLoginButton provider="claude" label="Claude (Anthropic)" color="text-violet-400" recommended onSuccess={refreshStatus} />
+          <CliLoginButton provider="codex" label="Codex (OpenAI)" color="text-emerald-400" onSuccess={refreshStatus} />
 
           <div className="flex gap-2 border-t border-border/30 pt-2">
             <Button
@@ -237,6 +195,89 @@ export function LLMSetup() {
             키는 서버 메모리에만 저장되며, 서버 재시작 시 초기화됩니다.
           </p>
         </div>
+      )}
+    </div>
+  );
+}
+
+/** Button that triggers CLI login on the server and polls for completion. */
+function CliLoginButton({
+  provider,
+  label,
+  color,
+  recommended,
+  onSuccess,
+}: {
+  provider: "claude" | "codex";
+  label: string;
+  color: string;
+  recommended?: boolean;
+  onSuccess: () => void;
+}) {
+  const [state, setState] = useState<"idle" | "running" | "success" | "failed">("idle");
+  const [message, setMessage] = useState("");
+
+  async function startLogin() {
+    setState("running");
+    setMessage("브라우저에서 인증을 완료하세요...");
+
+    try {
+      await postClient("/api/cli-auth/login", { provider });
+
+      // Poll for completion
+      const poll = setInterval(async () => {
+        try {
+          const res = await fetchClient<{ loggedIn: boolean; loginStatus: string | null }>(`/api/cli-auth/status?provider=${provider}`);
+          if (res.loggedIn) {
+            clearInterval(poll);
+            setState("success");
+            setMessage("로그인 성공!");
+            onSuccess();
+          } else if (res.loginStatus === "failed") {
+            clearInterval(poll);
+            setState("failed");
+            setMessage("로그인 실패. 다시 시도하세요.");
+          }
+        } catch { /* keep polling */ }
+      }, 2000);
+
+      // Stop polling after 2 minutes
+      setTimeout(() => clearInterval(poll), 120_000);
+    } catch (e) {
+      setState("failed");
+      setMessage(e instanceof Error ? e.message : "로그인 시작 실패");
+    }
+  }
+
+  return (
+    <div className="rounded-md border border-border/30 px-3 py-2.5 space-y-1.5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className={`text-[11px] font-medium ${color}`}>{label}</span>
+          {recommended && <Badge variant="outline" className="text-[8px]">추천</Badge>}
+        </div>
+        <Button
+          size="sm"
+          variant={state === "running" ? "ghost" : "default"}
+          className="h-6 text-[10px]"
+          onClick={startLogin}
+          disabled={state === "running"}
+        >
+          {state === "idle" && "로그인"}
+          {state === "running" && "인증 대기 중..."}
+          {state === "success" && "✓ 완료"}
+          {state === "failed" && "재시도"}
+        </Button>
+      </div>
+      {message && (
+        <p className={`text-[10px] ${state === "failed" ? "text-red-400" : state === "success" ? "text-emerald-400" : "text-muted-foreground"}`}>
+          {message}
+        </p>
+      )}
+      {state === "running" && (
+        <p className="text-[10px] text-amber-400/80">
+          브라우저가 열렸습니다 — 인증을 완료해주세요.
+        </p>
       )}
     </div>
   );

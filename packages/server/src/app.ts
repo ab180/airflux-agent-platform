@@ -11,6 +11,7 @@ import { adminRoutes } from './routes/admin.js';
 import { healthRoute } from './routes/health.js';
 import { slackRoute } from './routes/slack.js';
 import { conversationRoutes } from './routes/conversations.js';
+import { cliAuthRoutes } from './routes/cli-auth.js';
 
 export const app = new Hono();
 
@@ -51,6 +52,9 @@ app.route('/api', slackRoute);
 
 // Conversation API (user-facing, PostgreSQL-backed)
 app.route('/api', conversationRoutes);
+
+// CLI auth (trigger claude/codex login from dashboard)
+app.route('/api', cliAuthRoutes);
 
 // Admin API endpoints (requires auth in production)
 app.use('/api/admin/*', adminAuth);
