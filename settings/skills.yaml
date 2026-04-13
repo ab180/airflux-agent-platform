@@ -1,0 +1,60 @@
+# Airflux Skill Definitions
+# 스킬 = 도구 조합 + guardrail 정책
+
+skills:
+  text-to-sql:
+    description: "자연어를 SQL로 변환하여 Snowflake에서 실행"
+    requiredTools:
+      - getSemanticLayer
+      - executeSnowflakeQuery
+      - formatResult
+    guardrails:
+      - read-only
+      - time-range
+      - row-limit
+      - pii-filter
+      - cost-estimation
+
+  chart-generation:
+    description: "데이터를 차트/시각화로 변환"
+    requiredTools:
+      - generateQuickChart
+      - uploadToS3
+    guardrails:
+      - cost-estimation
+
+  data-export:
+    description: "대량 데이터를 CSV/파일로 내보내기"
+    requiredTools:
+      - executeSnowflakeQuery
+      - generatePresignedUrl
+    guardrails:
+      - read-only
+      - row-limit
+
+  anomaly-detect:
+    description: "시계열 데이터에서 통계적 이상치 탐지"
+    requiredTools:
+      - executeSnowflakeQuery
+    guardrails:
+      - read-only
+      - time-range
+
+  trend-analysis:
+    description: "지표 추이 분석 및 비교"
+    requiredTools:
+      - executeSnowflakeQuery
+      - generateQuickChart
+    guardrails:
+      - read-only
+
+  periodic-report:
+    description: "정기 리포트 생성 및 전달"
+    requiredTools:
+      - executeSnowflakeQuery
+      - generateQuickChart
+      - uploadToS3
+      - postSlackMessage
+    guardrails:
+      - read-only
+      - cost-estimation

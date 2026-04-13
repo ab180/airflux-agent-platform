@@ -103,6 +103,26 @@ Agent (에이전트) = LLM + Instructions + Skills + Tools
 
 15종 YAML: agents, skills, routing-rules, semantic-layer, domain-glossary, feature-flags, rbac, experiments, monitors, cron-reports, rate-limits, channel-app-mapping, app-access, prompts/*, few-shots/*
 
+## 현재 구현 상태 (Phase 0 완료 + Phase 1 진입)
+
+> 상세: `docs/STATUS.md`
+
+```
+packages/core      — Agent/Skill/Tool/Guardrails/Router 프레임워크 (35 tests)
+packages/server    — Hono API + SQLite + 30+ endpoints (49 tests)
+apps/dashboard     — Next.js 16 대시보드 (17 routes)
+settings/          — YAML (agents, skills, feature-flags, routing-rules)
+```
+
+- 에이전트 2개: echo-agent, assistant-agent (AI SDK 6)
+- 도구 6개: echo, getTimestamp, calculate, formatJson, httpGet, getSystemInfo
+- 대시보드 17개 페이지: 현황, 에이전트(목록+상세), 스킬, 도구(테스트), 프롬프트, 플레이그라운드, 평가, 스케줄, 피드백, 모니터링, 로그
+- SQLite 6개 테이블: request_logs, feedback, prompt_versions, sessions, golden_dataset, eval_runs
+- Guardrails 5종: pii-filter, read-only, prompt-injection, row-limit, query-length
+- Router: 키워드 + 정규식 기반 에이전트 자동 선택
+- 보안: 입력 검증, CORS, 보안 헤더, admin 인증, SSRF 방어, 코드 인젝션 방어, guardrails
+- 테스트 84개, 빌드 + 서버 + API 전체 동작 검증 완료
+
 ## Git Workflow
 
 - git 작업은 사용자가 명시적으로 요청할 때만 수행

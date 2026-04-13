@@ -1,0 +1,47 @@
+- name: echo-agent
+  enabled: true
+  description: Echo agent for testing — returns the input as-is
+  model: default
+  skills: []
+  tools:
+    - echo
+    - getTimestamp
+- name: assistant-agent
+  enabled: true
+  description: LLM-powered AI assistant with tool access
+  model: default
+  skills: []
+  tools:
+    - echo
+    - getTimestamp
+    - calculate
+    - formatJson
+    - httpGet
+    - getSystemInfo
+    - normalizeTime
+    - extractTimeFromQuery
+    - lookupTerm
+    - findTermsInQuery
+    - getSemanticLayer
+  maxSteps: 5
+  temperature: 0
+- name: data-agent
+  enabled: false
+  description: Data analysis agent (requires Snowflake connection)
+  model: powerful
+  skills: []
+  tools:
+    - getSemanticLayer
+    - getTableSchema
+    - getMetricSQL
+    - normalizeTime
+    - lookupTerm
+- name: research-agent
+  enabled: false
+  description: Anomaly detection and research agent
+  model: powerful
+  skills: []
+  tools:
+    - httpGet
+    - getSystemInfo
+    - calculate

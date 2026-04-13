@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.turbo/
+.env
+.env.local
+.env.*.local
+*.tsbuildinfo
+.next/
+.context/
+data/
+*.db
+*.db-wal
+*.db-shm
+.gstack/
+.DS_Store
