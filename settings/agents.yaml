@@ -27,6 +27,12 @@
     - confirmAction
     - manageSchedule
     - webSearch
+    - searchGitHub
+    - runCommand
+    - searchJira
+    - searchLinear
+    - searchSlack
+    - gitInfo
   maxSteps: 10
   temperature: 0
   advisor:

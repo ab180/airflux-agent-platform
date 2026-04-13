@@ -370,6 +370,151 @@ function registerBuiltInTools(): void {
     },
   });
 
+  // ─── External service tools (graceful when unconfigured) ────────
+
+  // GitHub code search
+  ToolRegistry.register('searchGitHub', {
+    description: 'GitHub 코드/파일 검색. GITHUB_TOKEN 환경변수 설정 시 동작.',
+    inputSchema: z.object({
+      query: z.string().describe('검색 쿼리 (예: "function handleQuery lang:typescript")'),
+      repo: z.string().optional().describe('레포 제한 (예: "ab180/airflux-agent-platform")'),
+    }),
+    execute: async (input: unknown) => {
+      const { query, repo } = input as { query: string; repo?: string };
+      const token = process.env.GITHUB_TOKEN;
+      if (!token) return { error: 'GITHUB_TOKEN 환경변수가 설정되지 않았습니다. GitHub 검색을 사용하려면 설정해주세요.' };
+      const q = repo ? `${query} repo:${repo}` : query;
+      try {
+        const res = await fetch(`https://api.github.com/search/code?q=${encodeURIComponent(q)}&per_page=10`, {
+          headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
+        });
+        if (!res.ok) return { error: `GitHub API ${res.status}` };
+        const data = await res.json() as { total_count: number; items: { name: string; path: string; repository: { full_name: string }; html_url: string }[] };
+        return { totalCount: data.total_count, results: data.items.map(i => ({ file: i.path, repo: i.repository.full_name, url: i.html_url })) };
+      } catch (e) { return { error: e instanceof Error ? e.message : 'GitHub search failed' }; }
+    },
+  });
+
+  // Bash command execution (sandboxed)
+  ToolRegistry.register('runCommand', {
+    description: '안전한 쉘 명령을 실행합니다. 읽기 전용 명령만 허용 (ls, cat, grep, wc, head, tail, find, jq, curl).',
+    inputSchema: z.object({
+      command: z.string().describe('실행할 명령 (예: "ls -la settings/", "wc -l packages/server/src/**/*.ts")'),
+    }),
+    execute: async (input: unknown) => {
+      const { command } = input as { command: string };
+      const allowedPrefixes = ['ls', 'cat', 'grep', 'wc', 'head', 'tail', 'find', 'jq', 'curl', 'echo', 'date', 'pwd'];
+      const firstWord = command.trim().split(/\s/)[0];
+      if (!allowedPrefixes.includes(firstWord)) {
+        return { error: `명령 "${firstWord}"은 허용되지 않습니다. 허용: ${allowedPrefixes.join(', ')}` };
+      }
+      if (/[;&|`$]/.test(command)) {
+        return { error: '파이프, 체인, 변수 대입은 보안상 차단됩니다.' };
+      }
+      const { execSync } = await import('child_process');
+      try {
+        const { resolve } = await import('path');
+        const output = execSync(command, { encoding: 'utf-8', timeout: 10_000, cwd: resolve(process.cwd(), '../..'), maxBuffer: 512 * 1024 });
+        return { command, output: output.slice(0, 5000), truncated: output.length > 5000 };
+      } catch (e) { return { error: e instanceof Error ? e.message.slice(0, 500) : 'Command failed' }; }
+    },
+  });
+
+  // Jira search (via Atlassian API or MCP)
+  ToolRegistry.register('searchJira', {
+    description: 'Jira 이슈를 검색합니다. JIRA_API_TOKEN + JIRA_BASE_URL 환경변수 필요.',
+    inputSchema: z.object({
+      jql: z.string().describe('JQL 쿼리 (예: "project = AIRFLUX AND status = Open")'),
+      maxResults: z.number().optional().describe('최대 결과 수 (기본 10)'),
+    }),
+    execute: async (input: unknown) => {
+      const { jql, maxResults = 10 } = input as { jql: string; maxResults?: number };
+      const token = process.env.JIRA_API_TOKEN;
+      const baseUrl = process.env.JIRA_BASE_URL;
+      if (!token || !baseUrl) return { error: 'JIRA_API_TOKEN 및 JIRA_BASE_URL 환경변수가 필요합니다.' };
+      try {
+        const res = await fetch(`${baseUrl}/rest/api/3/search?jql=${encodeURIComponent(jql)}&maxResults=${maxResults}`, {
+          headers: { Authorization: `Basic ${Buffer.from(`email:${token}`).toString('base64')}`, Accept: 'application/json' },
+        });
+        if (!res.ok) return { error: `Jira API ${res.status}` };
+        const data = await res.json() as { total: number; issues: { key: string; fields: { summary: string; status: { name: string } } }[] };
+        return { total: data.total, issues: data.issues.map(i => ({ key: i.key, summary: i.fields.summary, status: i.fields.status.name })) };
+      } catch (e) { return { error: e instanceof Error ? e.message : 'Jira search failed' }; }
+    },
+  });
+
+  // Linear issue search
+  ToolRegistry.register('searchLinear', {
+    description: 'Linear 이슈를 검색합니다. LINEAR_API_KEY 환경변수 필요.',
+    inputSchema: z.object({
+      query: z.string().describe('검색 키워드'),
+    }),
+    execute: async (input: unknown) => {
+      const { query } = input as { query: string };
+      const apiKey = process.env.LINEAR_API_KEY;
+      if (!apiKey) return { error: 'LINEAR_API_KEY 환경변수가 필요합니다.' };
+      try {
+        const res = await fetch('https://api.linear.app/graphql', {
+          method: 'POST',
+          headers: { Authorization: apiKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: `{ issueSearch(query: "${query}", first: 10) { nodes { identifier title state { name } url } } }` }),
+        });
+        const data = await res.json() as { data?: { issueSearch?: { nodes: { identifier: string; title: string; state: { name: string }; url: string }[] } } };
+        const issues = data.data?.issueSearch?.nodes || [];
+        return { count: issues.length, issues: issues.map(i => ({ id: i.identifier, title: i.title, status: i.state.name, url: i.url })) };
+      } catch (e) { return { error: e instanceof Error ? e.message : 'Linear search failed' }; }
+    },
+  });
+
+  // Slack message search
+  ToolRegistry.register('searchSlack', {
+    description: 'Slack 메시지를 검색합니다. SLACK_BOT_TOKEN 환경변수 필요.',
+    inputSchema: z.object({
+      query: z.string().describe('검색 키워드'),
+      channel: z.string().optional().describe('채널 ID (특정 채널 한정)'),
+    }),
+    execute: async (input: unknown) => {
+      const { query, channel } = input as { query: string; channel?: string };
+      const token = process.env.SLACK_BOT_TOKEN;
+      if (!token) return { error: 'SLACK_BOT_TOKEN 환경변수가 필요합니다.' };
+      const q = channel ? `${query} in:<#${channel}>` : query;
+      try {
+        const res = await fetch(`https://slack.com/api/search.messages?query=${encodeURIComponent(q)}&count=10`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json() as { ok: boolean; messages?: { matches: { text: string; channel: { name: string }; ts: string; permalink: string }[] } };
+        if (!data.ok) return { error: 'Slack API error' };
+        return { count: data.messages?.matches?.length || 0, messages: (data.messages?.matches || []).map(m => ({ text: m.text.slice(0, 200), channel: m.channel.name, url: m.permalink })) };
+      } catch (e) { return { error: e instanceof Error ? e.message : 'Slack search failed' }; }
+    },
+  });
+
+  // Git operations (read-only)
+  ToolRegistry.register('gitInfo', {
+    description: 'Git 저장소 정보를 조회합니다 (status, log, diff). 읽기 전용.',
+    inputSchema: z.object({
+      action: z.enum(['status', 'log', 'diff', 'branch']).describe('Git 명령'),
+      args: z.string().optional().describe('추가 인자 (예: log의 경우 "--oneline -10")'),
+    }),
+    execute: async (input: unknown) => {
+      const { action, args = '' } = input as { action: string; args?: string };
+      const { execSync } = await import('child_process');
+      const { resolve } = await import('path');
+      const cmds: Record<string, string> = {
+        status: 'git status --short',
+        log: `git log --oneline ${args || '-10'}`,
+        diff: `git diff --stat ${args}`,
+        branch: 'git branch -a',
+      };
+      const cmd = cmds[action];
+      if (!cmd) return { error: 'Unknown git action' };
+      try {
+        const output = execSync(cmd, { encoding: 'utf-8', timeout: 5000, cwd: resolve(process.cwd(), '../..') });
+        return { action, output: output.slice(0, 3000) };
+      } catch (e) { return { error: e instanceof Error ? e.message.slice(0, 200) : 'Git command failed' }; }
+    },
+  });
+
   // ─── Utility tools ──────────────────────────────────────────────
 
   // Timestamp tool
