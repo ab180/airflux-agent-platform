@@ -28,16 +28,13 @@
     - manageSchedule
     - webSearch
     - searchGitHub
-    - runCommand
     - searchJira
     - searchLinear
     - searchSlack
     - gitInfo
     - generateImage
-    - writeFile
     - getWorkspace
     - calendarEvents
-    - createPR
   maxSteps: 10
   temperature: 0
   advisor:
@@ -80,6 +77,25 @@
     - getTableSchema
     - getMetricSQL
   maxSteps: 5
+  temperature: 0
+
+# Admin Agent — 관리자 전용 (변경성 작업)
+- name: admin-agent
+  enabled: true
+  description: '관리자 전용 에이전트 — 파일 쓰기, 명령 실행, PR 생성 등 변경성 작업 수행'
+  model: default
+  skills: []
+  tools:
+    - getTimestamp
+    - readFile
+    - listFiles
+    - writeFile
+    - runCommand
+    - createPR
+    - manageSchedule
+    - confirmAction
+    - gitInfo
+  maxSteps: 10
   temperature: 0
 
 # 비활성 에이전트

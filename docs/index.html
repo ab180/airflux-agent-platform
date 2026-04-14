@@ -86,7 +86,7 @@
       <p>AI 에이전트를 등록하고, 설정하고, 모니터링하는 플랫폼. 데이터 분석부터 리포트 생성까지.</p>
       <div class="badges">
         <span class="badge"><span class="dot green"></span> 225 Tests</span>
-        <span class="badge"><span class="dot violet"></span> 16 Tools</span>
+        <span class="badge"><span class="dot violet"></span> 33 Tools</span>
         <span class="badge"><span class="dot amber"></span> Claude / Codex CLI 자동 연동</span>
       </div>
     </div>
@@ -149,16 +149,16 @@ npm run dev
       <h2>아키텍처</h2>
       <div class="mermaid">
 graph TD
-    A["채팅 / Slack / API"] --> B["Rate Limit"]
-    B --> C["Guardrails (19패턴)"]
-    C --> D["airflux-agent"]
-    D --> E["data-query<br/><small>SQL · 분석</small>"]
-    D --> F["code-search<br/><small>문서 검색</small>"]
-    D --> G["report-builder<br/><small>차트 · 리포트</small>"]
-    E --> H["16 Tools + PII Masking + Cost Tracking"]
-    F --> H
-    G --> H
-    H --> I["SQLite / PostgreSQL"]
+    A["채팅 / Slack / API"] --&gt;B["Rate Limit"]
+    B --&gt;C["Guardrails (19패턴)"]
+    C --&gt;D["airflux-agent"]
+    D --&gt;E["data-query<br/><small>SQL · 분석</small>"]
+    D --&gt;F["code-search<br/><small>문서 검색</small>"]
+    D --&gt;G["report-builder<br/><small>차트 · 리포트</small>"]
+    E --&gt; H["33 Tools + PII Masking + Cost Tracking"]
+    F --&gt;H
+    G --&gt;H
+    H --&gt;I["SQLite / PostgreSQL"]
 
     style D fill:#f59e0b,stroke:#b45309,color:#000
     style E fill:#8b5cf6,stroke:#6d28d9,color:#fff
@@ -169,13 +169,13 @@ graph TD
       <h3 style="margin-top:1.5rem">LLM 연결 흐름</h3>
       <div class="mermaid">
 flowchart LR
-    A["대시보드 설정"] --> B{"CLI 감지"}
-    B -->|"claude login"| C["Claude CLI<br/>(Anthropic)"]
-    B -->|"codex login"| D["Codex CLI<br/>(OpenAI)"]
-    B -->|"API 키"| E["직접 입력<br/>(sk-ant / sk-)"]
-    C --> F["LLM 사용 가능"]
-    D --> F
-    E --> F
+    A["대시보드 설정"] --&gt;B{"CLI 감지"}
+    B --&gt;|"claude login"| C["Claude CLI<br/>(Anthropic)"]
+    B --&gt;|"codex login"| D["Codex CLI<br/>(OpenAI)"]
+    B --&gt;|"API 키"| E["직접 입력<br/>(sk-ant / sk-)"]
+    C --&gt;F["LLM 사용 가능"]
+    D --&gt;F
+    E --&gt;F
 
     style C fill:#8b5cf6,stroke:#6d28d9,color:#fff
     style D fill:#10b981,stroke:#059669,color:#fff
@@ -185,7 +185,7 @@ flowchart LR
 
     <!-- Tools -->
     <div class="section">
-      <h2>도구 (16개)</h2>
+      <h2>도구 (33개)</h2>
       <table>
         <thead>
           <tr><th>도구</th><th>설명</th></tr>

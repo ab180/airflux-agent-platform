@@ -269,14 +269,18 @@ function registerBuiltInTools(): void {
     }),
     execute: async (input: unknown) => {
       const { path: filePath, maxLines = 200 } = input as { path: string; maxLines?: number };
-      const { readFileSync } = await import('fs');
-      const { resolve } = await import('path');
-      // Restrict to project directory
+      const { readFileSync, realpathSync } = await import('fs');
+      const { resolve, relative, isAbsolute } = await import('path');
       const projectRoot = resolve(process.cwd(), '../..');
       const fullPath = resolve(projectRoot, filePath);
-      if (!fullPath.startsWith(projectRoot)) return { error: 'Path traversal blocked' };
+      const rel = relative(projectRoot, fullPath);
+      if (rel.startsWith('..') || isAbsolute(rel)) return { error: 'Path traversal blocked' };
       try {
-        const content = readFileSync(fullPath, 'utf-8');
+        // Resolve symlinks and re-check
+        const realPath = realpathSync(fullPath);
+        const relReal = relative(projectRoot, realPath);
+        if (relReal.startsWith('..') || isAbsolute(relReal)) return { error: 'Path traversal blocked' };
+        const content = readFileSync(realPath, 'utf-8');
         const lines = content.split('\n').slice(0, maxLines);
         return { path: filePath, lines: lines.length, content: lines.join('\n') };
       } catch (e) {
@@ -293,10 +297,11 @@ function registerBuiltInTools(): void {
     execute: async (input: unknown) => {
       const { path: dirPath = '.' } = input as { path?: string };
       const { readdirSync, statSync } = await import('fs');
-      const { resolve } = await import('path');
+      const { resolve, relative, isAbsolute } = await import('path');
       const projectRoot = resolve(process.cwd(), '../..');
       const fullPath = resolve(projectRoot, dirPath);
-      if (!fullPath.startsWith(projectRoot)) return { error: 'Path traversal blocked' };
+      const rel = relative(projectRoot, fullPath);
+      if (rel.startsWith('..') || isAbsolute(rel)) return { error: 'Path traversal blocked' };
       try {
         const entries = readdirSync(fullPath).map(name => {
           try {
@@ -348,9 +353,9 @@ function registerBuiltInTools(): void {
         return { schedules: [], note: '스케줄 기능은 cron-reports.yaml 설정으로 관리됩니다.' };
       }
       if (action === 'create') {
-        return { created: false, note: `스케줄 "${name}" (${cron}): settings/agents.yaml의 schedule 필드에 추가해주세요.`, example: { name, cron, question } };
+        return { created: false, note: `스케줄 "${name}" (${cron}): settings/cron-reports.yaml에 추가해주세요.`, example: { name, cron, question }, schema: '{ name, cron, query, enabled, format, channel }' };
       }
-      return { action, note: '스케줄 관리는 settings/agents.yaml을 통해 수행됩니다.' };
+      return { action, note: '스케줄 관리는 settings/cron-reports.yaml을 통해 수행됩니다.' };
     },
   });
 
@@ -403,7 +408,7 @@ function registerBuiltInTools(): void {
     }),
     execute: async (input: unknown) => {
       const { command } = input as { command: string };
-      const allowedPrefixes = ['ls', 'cat', 'grep', 'wc', 'head', 'tail', 'find', 'jq', 'curl', 'echo', 'date', 'pwd'];
+      const allowedPrefixes = ['ls', 'cat', 'grep', 'wc', 'head', 'tail', 'find', 'jq', 'echo', 'date', 'pwd'];
       const firstWord = command.trim().split(/\s/)[0];
       if (!allowedPrefixes.includes(firstWord)) {
         return { error: `명령 "${firstWord}"은 허용되지 않습니다. 허용: ${allowedPrefixes.join(', ')}` };
@@ -498,19 +503,25 @@ function registerBuiltInTools(): void {
     }),
     execute: async (input: unknown) => {
       const { action, args = '' } = input as { action: string; args?: string };
-      const { execSync } = await import('child_process');
+      const { spawnSync } = await import('child_process');
       const { resolve } = await import('path');
-      const cmds: Record<string, string> = {
-        status: 'git status --short',
-        log: `git log --oneline ${args || '-10'}`,
-        diff: `git diff --stat ${args}`,
-        branch: 'git branch -a',
+      // Reject shell metacharacters in args to prevent injection
+      if (args && /[;&|`$"'<>\\{}()!]/.test(args)) {
+        return { error: '허용되지 않는 인자 문자입니다.' };
+      }
+      const safeArgs = args.trim() ? args.trim().split(/\s+/).filter(Boolean) : [];
+      const gitCmds: Record<string, string[]> = {
+        status: ['status', '--short'],
+        log: ['log', '--oneline', ...(safeArgs.length ? safeArgs : ['-10'])],
+        diff: ['diff', '--stat', ...safeArgs],
+        branch: ['branch', '-a'],
       };
-      const cmd = cmds[action];
-      if (!cmd) return { error: 'Unknown git action' };
+      const gitArgs = gitCmds[action];
+      if (!gitArgs) return { error: 'Unknown git action' };
       try {
-        const output = execSync(cmd, { encoding: 'utf-8', timeout: 5000, cwd: resolve(process.cwd(), '../..') });
-        return { action, output: output.slice(0, 3000) };
+        const result = spawnSync('git', gitArgs, { encoding: 'utf-8', timeout: 5000, cwd: resolve(process.cwd(), '../..') });
+        if (result.error) return { error: result.error.message.slice(0, 200) };
+        return { action, output: ((result.stdout || '') + (result.stderr || '')).slice(0, 3000) };
       } catch (e) { return { error: e instanceof Error ? e.message.slice(0, 200) : 'Git command failed' }; }
     },
   });
@@ -546,10 +557,11 @@ function registerBuiltInTools(): void {
       const { path: filePath, content } = input as { path: string; content: string };
       if (!filePath.startsWith('settings/')) return { error: 'settings/ 디렉토리만 쓰기가 허용됩니다.' };
       const { writeFileSync } = await import('fs');
-      const { resolve } = await import('path');
+      const { resolve, relative, isAbsolute } = await import('path');
       const projectRoot = resolve(process.cwd(), '../..');
       const fullPath = resolve(projectRoot, filePath);
-      if (!fullPath.startsWith(projectRoot)) return { error: 'Path traversal blocked' };
+      const rel = relative(projectRoot, fullPath);
+      if (rel.startsWith('..') || isAbsolute(rel)) return { error: 'Path traversal blocked' };
       try {
         writeFileSync(fullPath, content, 'utf-8');
         return { path: filePath, written: true, bytes: content.length };
