@@ -165,6 +165,20 @@ function getAnthropicApiKey(): string {
   );
 }
 
+function makeOAuthModel(token: string, tier: ModelTier) {
+  const anthropic = createAnthropic({
+    apiKey: 'placeholder',
+    fetch: async (url: string | Request | URL, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      headers.delete('x-api-key');
+      headers.set('Authorization', `Bearer ${token}`);
+      headers.set('anthropic-beta', OAUTH_BETA_HEADER);
+      return globalThis.fetch(url, { ...init, headers });
+    },
+  });
+  return anthropic(TIER_MODELS[tier]);
+}
+
 export async function createModelAsync(tier: ModelTier = 'default'): Promise<ReturnType<ReturnType<typeof createAnthropic>>> {
   // 1. Try direct API key first
   try {
@@ -175,7 +189,13 @@ export async function createModelAsync(tier: ModelTier = 'default'): Promise<Ret
     // no API key
   }
 
-  // 2. Try Claude Max OAuth (auto-refreshes if expired)
+  // 2. Try ANTHROPIC_AUTH_TOKEN env var (set by setup-docker-env.sh from Keychain)
+  if (process.env.ANTHROPIC_AUTH_TOKEN) {
+    keySource = 'env:ANTHROPIC_AUTH_TOKEN';
+    return makeOAuthModel(process.env.ANTHROPIC_AUTH_TOKEN, tier);
+  }
+
+  // 3. Try Claude Max OAuth from credentials file (auto-refreshes if expired)
   const oauthToken = await getFreshOAuthToken();
   if (oauthToken) {
     keySource = 'claude-max-oauth';
@@ -203,16 +223,9 @@ export function createModel(tier: ModelTier = 'default'): ReturnType<ReturnType<
 }
 
 export function isLLMAvailable(): boolean {
-  // Check API key
-  try {
-    getAnthropicApiKey();
-    return true;
-  } catch { /* no key */ }
-
-  // Check OAuth credentials
+  try { getAnthropicApiKey(); return true; } catch { /* no key */ }
+  if (process.env.ANTHROPIC_AUTH_TOKEN) return true;
   if (readCredentials() !== null) return true;
-
-  // Check Claude CLI
   return isClaudeCliAvailable();
 }
 
@@ -225,7 +238,13 @@ export function getLLMStatus(): { available: boolean; source: string; providers:
     return { available: true, source: keySource, providers };
   } catch { /* no API key */ }
 
-  // Check OAuth
+  // ANTHROPIC_AUTH_TOKEN from env (setup-docker-env.sh / Keychain)
+  if (process.env.ANTHROPIC_AUTH_TOKEN) {
+    providers.push('claude-max-oauth');
+    return { available: true, source: 'env:ANTHROPIC_AUTH_TOKEN', providers };
+  }
+
+  // OAuth credentials file
   const creds = readCredentials();
   if (creds) {
     providers.push('claude-max-oauth');
