@@ -1,0 +1,140 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - link "메인 콘텐츠로 건너뛰기" [ref=e3] [cursor=pointer]:
+      - /url: "#main-content"
+    - complementary "사이드바 네비게이션" [ref=e4]:
+      - generic [ref=e5]:
+        - generic [ref=e7]: A
+        - generic [ref=e8]: Airfluxv0.1
+      - navigation "대시보드 메뉴" [ref=e9]:
+        - generic [ref=e10]: 플랫폼
+        - link "현황" [ref=e11] [cursor=pointer]:
+          - /url: /dashboard
+          - img [ref=e12]
+          - text: 현황
+        - link "에이전트" [ref=e17] [cursor=pointer]:
+          - /url: /dashboard/agents
+          - img [ref=e18]
+          - text: 에이전트
+        - link "스킬" [ref=e23] [cursor=pointer]:
+          - /url: /dashboard/skills
+          - img [ref=e24]
+          - text: 스킬
+        - link "도구" [ref=e26] [cursor=pointer]:
+          - /url: /dashboard/tools
+          - img [ref=e27]
+          - text: 도구
+        - link "프롬프트" [ref=e29] [cursor=pointer]:
+          - /url: /dashboard/prompts
+          - img [ref=e30]
+          - text: 프롬프트
+        - link "플레이그라운드" [ref=e34] [cursor=pointer]:
+          - /url: /dashboard/playground
+          - img [ref=e35]
+          - text: 플레이그라운드
+        - link "스케줄" [ref=e37] [cursor=pointer]:
+          - /url: /dashboard/schedules
+          - img [ref=e38]
+          - text: 스케줄
+        - link "평가" [ref=e41] [cursor=pointer]:
+          - /url: /dashboard/evaluation
+          - img [ref=e42]
+          - text: 평가
+        - link "피드백" [ref=e45] [cursor=pointer]:
+          - /url: /dashboard/feedback
+          - img [ref=e46]
+          - text: 피드백
+        - link "모니터링" [ref=e48] [cursor=pointer]:
+          - /url: /dashboard/monitoring
+          - img [ref=e49]
+          - text: 모니터링
+        - link "AI 사용량" [ref=e51] [cursor=pointer]:
+          - /url: /dashboard/ai-usage
+          - img [ref=e52]
+          - text: AI 사용량
+        - link "로그" [ref=e54] [cursor=pointer]:
+          - /url: /dashboard/logs
+          - img [ref=e55]
+          - text: 로그
+        - link "설정" [ref=e58] [cursor=pointer]:
+          - /url: /dashboard/settings
+          - img [ref=e59]
+          - text: 설정
+      - link "사용자 채팅 →" [ref=e63] [cursor=pointer]:
+        - /url: /chat
+        - img [ref=e64]
+        - text: 사용자 채팅 →
+      - generic [ref=e67]:
+        - status "시스템 정상" [ref=e68]
+        - generic [ref=e69]: 관리자 모드
+    - main "대시보드 콘텐츠" [ref=e70]:
+      - generic [ref=e72]:
+        - generic [ref=e73]:
+          - heading "설정" [level=1] [ref=e74]
+          - paragraph [ref=e75]: 플랫폼 보안 및 시스템 설정
+        - region "LLM 설정" [ref=e76]:
+          - heading "LLM 연결" [level=2] [ref=e77]
+          - generic [ref=e79]:
+            - generic [ref=e80]:
+              - status "미연결" [ref=e81]
+              - generic [ref=e82]: LLM 미연결
+            - generic [ref=e83]:
+              - paragraph [ref=e84]: AI 에이전트를 사용하려면 LLM을 연결하세요.
+              - generic [ref=e85]:
+                - button "CLI 로그인 claude login 또는 codex login" [ref=e86]:
+                  - generic [ref=e87]: CLI 로그인
+                  - generic [ref=e88]: claude login 또는 codex login
+                - button "API 키 입력 Anthropic 또는 OpenAI" [ref=e89]:
+                  - generic [ref=e90]: API 키 입력
+                  - generic [ref=e91]: Anthropic 또는 OpenAI
+        - region "가드레일 설정" [ref=e92]:
+          - generic [ref=e93]:
+            - heading "가드레일 (0개 활성)" [level=2] [ref=e94]
+            - generic [ref=e95]: 모두 활성
+          - paragraph [ref=e96]: 모든 쿼리에 자동 적용되는 입력 보안 규칙. 현재 prompt-injection과 pii-filter가 쿼리 입력에 적용됩니다.
+        - region "라우팅 규칙" [ref=e97]:
+          - heading "라우팅 규칙 (0개)" [level=2] [ref=e98]
+          - paragraph [ref=e99]: "사용자 질문을 적절한 에이전트로 자동 분배하는 규칙. Fallback: echo-agent"
+        - generic [ref=e100]:
+          - heading "시스템 정보" [level=2] [ref=e101]
+          - generic [ref=e102]:
+            - generic [ref=e103]:
+              - generic [ref=e104]: 플랫폼
+              - generic [ref=e105]: Airflux Agent Platform v0.1.0
+            - generic [ref=e106]:
+              - generic [ref=e107]: 단계
+              - generic [ref=e108]: Phase 0+1 — 로컬 개발
+            - generic [ref=e109]:
+              - generic [ref=e110]: 서버
+              - generic [ref=e111]: Hono (Node.js)
+            - generic [ref=e112]:
+              - generic [ref=e113]: 대시보드
+              - generic [ref=e114]: Next.js 16 + shadcn/ui
+            - generic [ref=e115]:
+              - generic [ref=e116]: 데이터베이스
+              - generic [ref=e117]: SQLite (WAL 모드, 64MB 캐시)
+            - generic [ref=e118]:
+              - generic [ref=e119]: LLM
+              - generic [ref=e120]: AI SDK 6 + Anthropic (Advisor 지원)
+            - generic [ref=e121]:
+              - generic [ref=e122]: 에이전트
+              - generic [ref=e123]: 0개 (0개 advisor)
+            - generic [ref=e124]:
+              - generic [ref=e125]: 보안
+              - generic [ref=e126]: 8종 미들웨어 + 0종 가드레일 + 19패턴 prompt injection
+        - generic [ref=e127]:
+          - heading "설정 파일" [level=2] [ref=e128]
+          - generic [ref=e129]:
+            - generic [ref=e130]:
+              - generic [ref=e131]: settings/agents.yaml
+              - generic [ref=e132]: 에이전트 등록/설정
+            - generic [ref=e133]:
+              - generic [ref=e134]: settings/skills.yaml
+              - generic [ref=e135]: 스킬 정의 (도구 조합 + guardrail)
+            - generic [ref=e136]:
+              - generic [ref=e137]: settings/routing-rules.yaml
+              - generic [ref=e138]: 에이전트 라우팅 규칙
+            - generic [ref=e139]:
+              - generic [ref=e140]: settings/feature-flags.yaml
+              - generic [ref=e141]: 기능 플래그
+  - alert [ref=e142]

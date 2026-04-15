@@ -29,7 +29,7 @@ export class AssistantAgent extends BaseAgent {
         throw new Error('No LLM available. Set ANTHROPIC_API_KEY or run `claude login`.');
       }
 
-      // Convert registered tools to AI SDK tool format (plain objects)
+      // Convert registered tools to AI SDK tool format
       const aiTools: Record<string, { description: string; parameters: unknown; execute: (input: unknown) => Promise<unknown> }> = {};
       for (const [name, t] of Object.entries(this.tools)) {
         aiTools[name] = {
@@ -47,12 +47,7 @@ export class AssistantAgent extends BaseAgent {
         tools: aiTools as any,
         stopWhen: stepCountIs(this.config.maxSteps || 5),
         // Extended thinking requires temperature: 1 (Anthropic constraint)
-        temperature: 1,
-        providerOptions: {
-          anthropic: {
-            thinking: { type: 'enabled', budgetTokens: 8000 },
-          },
-        },
+        temperature: 0,
       });
 
       const durationMs = Math.round(performance.now() - startTime);

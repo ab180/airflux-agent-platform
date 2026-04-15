@@ -8,8 +8,8 @@ import { logger } from '../lib/logger.js';
 
 const TIER_MODELS: Record<ModelTier, string> = {
   fast: 'claude-haiku-4-5-20251001',
-  default: 'claude-sonnet-4-6-20250514',
-  powerful: 'claude-opus-4-6-20250514',
+  default: 'claude-sonnet-4-6',
+  powerful: 'claude-opus-4-6',
 };
 
 // Claude Max OAuth constants (from Claude CLI source)
@@ -172,8 +172,30 @@ function makeOAuthModel(token: string, tier: ModelTier) {
       const headers = new Headers(init?.headers);
       headers.delete('x-api-key');
       headers.set('Authorization', `Bearer ${token}`);
-      headers.set('anthropic-beta', OAUTH_BETA_HEADER);
-      return globalThis.fetch(url, { ...init, headers });
+      // Merge beta headers: preserve SDK-set betas (e.g. thinking) and add OAuth beta
+      const existing = headers.get('anthropic-beta');
+      const betaValues = existing
+        ? [...new Set([...existing.split(',').map(s => s.trim()), OAUTH_BETA_HEADER])]
+        : [OAUTH_BETA_HEADER];
+      headers.set('anthropic-beta', betaValues.join(','));
+
+      // Patch request body: ensure every tool input_schema has type:"object"
+      // (Anthropic API requires this; older SDK versions may omit it)
+      let body = init?.body;
+      if (typeof body === 'string') {
+        try {
+          const parsed = JSON.parse(body) as Record<string, unknown>;
+          if (Array.isArray(parsed.tools)) {
+            for (const t of parsed.tools as Array<Record<string, unknown>>) {
+              const schema = t.input_schema as Record<string, unknown> | undefined;
+              if (schema && !schema.type) schema.type = 'object';
+            }
+            body = JSON.stringify(parsed);
+          }
+        } catch { /* not JSON — leave as-is */ }
+      }
+
+      return globalThis.fetch(url, { ...init, headers, body });
     },
   });
   return anthropic(TIER_MODELS[tier]);
