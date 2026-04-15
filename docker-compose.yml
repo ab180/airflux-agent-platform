@@ -38,8 +38,8 @@ services:
       # - SLACK_BOT_TOKEN=xoxb-...
     volumes:
       - ./settings:/app/settings
-      # Claude Code 세션 디렉토리 (setup-docker-env.sh 실행 후 .credentials.json 생성됨)
-      - ${HOME}/.claude:/root/.claude:ro
+      # Claude Code 세션 디렉토리 — writable so CLI can auto-refresh OAuth tokens
+      - ${HOME}/.claude:/root/.claude
       # Codex CLI 세션 디렉토리 (로그인 상태 공유)
       - ${HOME}/.codex:/root/.codex:ro
 

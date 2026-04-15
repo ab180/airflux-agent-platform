@@ -1,7 +1,7 @@
 import { generateText, stepCountIs } from 'ai';
 import { BaseAgent, loadAgentInstructions } from '@airflux/core';
 import type { AgentContext, AgentResult, AgentConfig, AgentTool } from '@airflux/core';
-import { createModel } from '../llm/model-factory.js';
+import { createModelAsync } from '../llm/model-factory.js';
 import { isClaudeCliAvailable, callClaudeCli } from '../llm/claude-cli-provider.js';
 import { buildAdvisorToolDef, buildAdvisorSystemPrompt, extractAdvisorUsage, recordAdvisorCost } from '../llm/advisor.js';
 
@@ -17,12 +17,12 @@ export class AssistantAgent extends BaseAgent {
     try {
       const systemPrompt = this.buildSystemPrompt(context.sessionHistory);
 
-      // Try AI SDK first, fallback to Claude CLI
+      // Try AI SDK (API key or OAuth auto-refresh), fallback to Claude CLI
       let model;
       try {
-        model = createModel(modelTier);
+        model = await createModelAsync(modelTier);
       } catch {
-        // No API key — try Claude CLI fallback
+        // No API key/OAuth — try Claude CLI fallback
         if (isClaudeCliAvailable()) {
           return this.executeViaCli(context, systemPrompt, startTime);
         }
@@ -46,7 +46,13 @@ export class AssistantAgent extends BaseAgent {
         prompt: context.question,
         tools: aiTools as any,
         stopWhen: stepCountIs(this.config.maxSteps || 5),
-        temperature: this.config.temperature ?? 0,
+        // Extended thinking requires temperature: 1 (Anthropic constraint)
+        temperature: 1,
+        providerOptions: {
+          anthropic: {
+            thinking: { type: 'enabled', budgetTokens: 8000 },
+          },
+        },
       });
 
       const durationMs = Math.round(performance.now() - startTime);
@@ -62,6 +68,9 @@ export class AssistantAgent extends BaseAgent {
         }
       }
 
+      // Extract reasoning text from extended thinking (undefined in CLI/non-thinking mode)
+      const thinking = (result as unknown as { reasoningText?: string }).reasoningText || undefined;
+
       return {
         success: true,
         text: result.text,
@@ -73,6 +82,7 @@ export class AssistantAgent extends BaseAgent {
           toolCalls: result.steps.flatMap(s => s.toolCalls || []).map(tc => tc.toolName),
           advisorCalls,
           advisorModel: this.config.advisor?.model || null,
+          thinking,
           usage: {
             inputTokens: (result.usage as unknown as Record<string, number>).promptTokens ?? result.usage.inputTokens ?? 0,
             outputTokens: (result.usage as unknown as Record<string, number>).completionTokens ?? result.usage.outputTokens ?? 0,

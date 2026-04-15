@@ -18,6 +18,7 @@ interface Message {
   toolCalls?: string[];
   steps?: number;
   chartData?: ChartData;
+  thinking?: string;
   timestamp: string;
   feedbackSent?: "positive" | "negative";
 }
@@ -83,6 +84,7 @@ export default function PlaygroundPage() {
           model?: string;
           toolCalls?: string[];
           steps?: number;
+          thinking?: string;
           usage?: { inputTokens?: number; outputTokens?: number };
         };
       }>("/api/query", {
@@ -104,6 +106,7 @@ export default function PlaygroundPage() {
         model: data.metadata?.model,
         toolCalls: data.metadata?.toolCalls,
         steps: data.metadata?.steps,
+        thinking: data.metadata?.thinking,
         chartData: data.data as ChartData | undefined,
         timestamp: new Date().toISOString(),
       };
@@ -227,6 +230,7 @@ export default function PlaygroundPage() {
                       text={msg.text}
                       toolCalls={msg.toolCalls}
                       chartData={msg.chartData}
+                      thinking={msg.thinking}
                     />
                   ) : (
                     <p className="whitespace-pre-wrap text-[13px] leading-relaxed">

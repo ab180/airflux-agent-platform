@@ -74,13 +74,16 @@ export function callClaudeCli(
 ): string {
   try {
     const args = ['--print', '--model', model];
-    if (systemPrompt) {
-      args.push('--system-prompt', systemPrompt.slice(0, 4000));
-    }
-    args.push(prompt);
 
+    // Pass system prompt via flag (max 2000 chars to avoid arg length issues)
+    if (systemPrompt) {
+      args.push('--system-prompt', systemPrompt.slice(0, 2000));
+    }
+
+    // Pass user prompt via stdin (avoids shell arg length limits and quoting issues)
     const result = execFileSync(CLAUDE_BIN, args, {
       encoding: 'utf-8',
+      input: prompt,
       timeout: 120_000,
       maxBuffer: 1024 * 1024,
       env: ENV_WITH_PATH,
@@ -88,6 +91,9 @@ export function callClaudeCli(
 
     return result.trim();
   } catch (e) {
-    throw new Error(`Claude CLI call failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    const msg = e instanceof Error ? e.message : 'Unknown error';
+    // Strip the full command from the error to avoid leaking system prompt
+    const clean = msg.replace(/Command failed:.*$/s, 'Command failed (see server logs)');
+    throw new Error(`Claude CLI call failed: ${clean}`);
   }
 }
