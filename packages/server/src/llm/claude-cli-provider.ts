@@ -11,15 +11,30 @@
 import { execFileSync } from 'child_process';
 import { logger } from '../lib/logger.js';
 
+// null = not yet checked, false = checked and unavailable, true = available
 let cliAvailable: boolean | null = null;
+let lastCheckAt = 0;
+const RECHECK_INTERVAL_MS = 30_000; // re-check every 30s so login changes are picked up
 
 const CLAUDE_BIN = `${process.env.HOME}/.local/bin/claude`;
-const ENV_WITH_PATH = { ...process.env, PATH: `${process.env.HOME}/.local/bin:${process.env.PATH}` };
 
-/** Check if `claude` CLI is installed and authenticated. */
+// ANTHROPIC_AUTH_TOKEN must NOT be passed to the Claude CLI subprocess.
+// The CLI uses ~/.claude/.credentials.json for its own OAuth flow.
+// If ANTHROPIC_AUTH_TOKEN is in the environment, the CLI tries to use it
+// directly against api.anthropic.com, which rejects OAuth tokens.
+const { ANTHROPIC_AUTH_TOKEN: _drop, ...processEnvWithoutOAuth } = process.env;
+const ENV_WITH_PATH = {
+  ...processEnvWithoutOAuth,
+  PATH: `${process.env.HOME}/.local/bin:/usr/local/bin:${process.env.PATH}`,
+};
+
+/** Check if `claude` CLI is installed and authenticated. Re-checks every 30s. */
 export function isClaudeCliAvailable(): boolean {
-  if (cliAvailable !== null) return cliAvailable;
+  const now = Date.now();
+  if (cliAvailable === true) return true; // stay true until cleared
+  if (cliAvailable === false && now - lastCheckAt < RECHECK_INTERVAL_MS) return false;
 
+  lastCheckAt = now;
   try {
     const result = execFileSync(CLAUDE_BIN, ['auth', 'status'], {
       encoding: 'utf-8',
@@ -35,6 +50,12 @@ export function isClaudeCliAvailable(): boolean {
     cliAvailable = false;
     return false;
   }
+}
+
+/** Force re-check on next call (e.g. after login). */
+export function resetCliAvailableCache(): void {
+  cliAvailable = null;
+  lastCheckAt = 0;
 }
 
 /**

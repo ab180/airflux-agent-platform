@@ -26,12 +26,43 @@ services:
       - PORT=3000
       - NODE_ENV=production
       - DATABASE_URL=postgres://airflux:airflux@postgres:5432/airflux
-      # - ANTHROPIC_API_KEY=sk-ant-...
-      # - ADMIN_API_KEY=your-secret
+      - SETTINGS_DIR=/app/settings
+      # Admin 인증 — .env 파일에 ADMIN_API_KEY=... 설정 (미설정 시 production에서 차단)
+      - ADMIN_API_KEY=${ADMIN_API_KEY:-airflux-local}
+      # LLM — .env 파일에 ANTHROPIC_API_KEY=sk-ant-... 설정
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      # Claude Code OAuth 토큰 (claude login 환경에서 자동 전달)
+      - ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN:-}
+      # 기타
       # - SLACK_BOT_TOKEN=xoxb-...
-      # - SLACK_SIGNING_SECRET=...
     volumes:
       - ./settings:/app/settings
+      # Claude Code 세션 디렉토리 (setup-docker-env.sh 실행 후 .credentials.json 생성됨)
+      - ${HOME}/.claude:/root/.claude:ro
+      # Codex CLI 세션 디렉토리 (로그인 상태 공유)
+      - ${HOME}/.codex:/root/.codex:ro
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+      args:
+        - NEXT_PUBLIC_ADMIN_API_KEY=${ADMIN_API_KEY:-airflux-local}
+    ports:
+      - "3001:3001"
+    depends_on:
+      - server
+    environment:
+      - PORT=3001
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+      # Internal Docker hostname for SSR → server container (not browser-facing localhost)
+      - API_URL=http://server:3000
+      - ADMIN_API_KEY=${ADMIN_API_KEY:-airflux-local}
+      # - NEXT_PUBLIC_AUTH_MODE=local
+      # - NEXTAUTH_URL=http://localhost:3001
+      # - NEXTAUTH_SECRET=your-secret
 
 volumes:
   pgdata:

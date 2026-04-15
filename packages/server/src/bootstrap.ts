@@ -19,7 +19,7 @@ import type { AgentConfig, AgentTool, SkillDefinition, RoutingConfig, GlossaryCo
 import { z } from 'zod';
 
 export async function bootstrap(settingsPath?: string): Promise<void> {
-  const settingsDir = settingsPath || resolve(process.cwd(), '../../settings');
+  const settingsDir = settingsPath || process.env.SETTINGS_DIR || resolve(process.cwd(), '../../settings');
   setSettingsDir(settingsDir);
 
   logger.info("Loading settings", { settingsDir });
