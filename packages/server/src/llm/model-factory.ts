@@ -2,14 +2,21 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { readFileSync } from 'fs';
 import { execFileSync } from 'child_process';
 import { homedir } from 'os';
-import type { ModelTier } from '@airflux/core';
+import type { ModelTier, ProviderName } from '@airflux/core';
 import { isClaudeCliAvailable } from './claude-cli-provider.js';
+import { isCodexCliAvailable } from './codex-cli-provider.js';
 import { logger } from '../lib/logger.js';
 
 const TIER_MODELS: Record<ModelTier, string> = {
   fast: 'claude-haiku-4-5-20251001',
   default: 'claude-sonnet-4-6',
   powerful: 'claude-opus-4-6',
+};
+
+const OPENAI_TIER_MODELS: Record<ModelTier, string> = {
+  fast: 'gpt-4.1-mini',
+  default: 'gpt-5.4',
+  powerful: 'o3',
 };
 
 // Claude Max OAuth constants (from Claude CLI source)
@@ -248,7 +255,9 @@ export function isLLMAvailable(): boolean {
   try { getAnthropicApiKey(); return true; } catch { /* no key */ }
   if (process.env.ANTHROPIC_AUTH_TOKEN) return true;
   if (readCredentials() !== null) return true;
-  return isClaudeCliAvailable();
+  if (isClaudeCliAvailable()) return true;
+  if (process.env.OPENAI_API_KEY) return true;
+  return isCodexCliAvailable();
 }
 
 export function getLLMStatus(): { available: boolean; source: string; providers: string[] } {
@@ -288,7 +297,50 @@ export function getLLMStatus(): { available: boolean; source: string; providers:
     return { available: true, source: 'env:OPENAI_API_KEY', providers };
   }
 
+  if (isCodexCliAvailable()) {
+    providers.push('codex-cli');
+    return { available: true, source: 'codex-cli', providers };
+  }
+
   return { available: false, source: 'none', providers };
+}
+
+/**
+ * Create a model for a specific provider.
+ * Used by agents with explicit provider config (e.g., provider: 'openai').
+ */
+export async function createModelForProvider(
+  provider: ProviderName = 'claude',
+  tier: ModelTier = 'default',
+): Promise<ReturnType<ReturnType<typeof createAnthropic>>> {
+  if (provider === 'openai') {
+    return createOpenAIModel(tier);
+  }
+  // Default: claude (existing logic)
+  return createModelAsync(tier);
+}
+
+/**
+ * Create an OpenAI model via AI SDK.
+ * Falls back to Codex CLI if no API key is available.
+ */
+async function createOpenAIModel(tier: ModelTier): Promise<any> {
+  const modelId = OPENAI_TIER_MODELS[tier];
+
+  // Try OPENAI_API_KEY first
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      const { createOpenAI } = await import('@ai-sdk/openai');
+      return createOpenAI({ apiKey: process.env.OPENAI_API_KEY })(modelId);
+    } catch (e) {
+      logger.warn('Failed to create OpenAI model via AI SDK', {
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  // No API key — throw so caller can fall back to Codex CLI
+  throw new Error(`No OpenAI API key. Use Codex CLI fallback for model ${modelId}.`);
 }
 
 /** Set API key at runtime (from dashboard UI). */

@@ -47,10 +47,14 @@ export interface SkillDefinition {
  */
 export type AgentAutonomy = 'suggest' | 'auto-read' | 'full-auto';
 
+export type ProviderName = 'claude' | 'openai';
+
 export interface AgentConfig {
   name: string;
   enabled: boolean;
   description?: string;
+  /** LLM provider: 'claude' (default) or 'openai' (Codex/GPT) */
+  provider?: ProviderName;
   model: string;
   fallbackModel?: string;
   promptVersion?: string;

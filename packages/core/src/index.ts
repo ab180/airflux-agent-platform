@@ -10,6 +10,7 @@ export type {
   ScheduleConfig,
   ResponseChannel,
   LLMProvider,
+  ProviderName,
   ModelTier,
   AdvisorConfig,
   MCPServerConfig,

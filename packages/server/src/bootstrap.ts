@@ -57,10 +57,10 @@ export async function bootstrap(settingsPath?: string): Promise<void> {
     const agents = AgentRegistry.list();
     logger.info("Agents initialized", { count: agents.length, names: agents.map(a => a.name) });
   } catch (e) {
-    logger.warn('No agents config, using default airflux agent');
+    logger.warn('No agents config, using default chief agent');
     await AgentRegistry.initialize([
       {
-        name: 'airflux-agent',
+        name: 'chief-agent',
         enabled: true,
         description: 'Airflux AI Assistant',
         model: 'default',

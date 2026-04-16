@@ -40,6 +40,7 @@ export abstract class BaseAgent {
       name: this.name,
       enabled: this.isEnabled(),
       description: this.config.description,
+      provider: this.config.provider || 'claude',
       model: this.config.model,
       skills: this.config.skills,
       tools: this.getToolNames(),
