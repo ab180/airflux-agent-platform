@@ -86,6 +86,26 @@ export async function initPgTables(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_cost_timestamp ON cost_entries(timestamp DESC);
     CREATE INDEX IF NOT EXISTS idx_cost_agent ON cost_entries(agent, timestamp DESC);
     CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_id, updated_at DESC);
+
+    -- Inter-agent message bus (Living Company pattern)
+    CREATE TABLE IF NOT EXISTS agent_messages (
+      id TEXT PRIMARY KEY,
+      from_agent TEXT NOT NULL,
+      to_agent TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'request',
+      priority TEXT NOT NULL DEFAULT 'normal',
+      subject TEXT NOT NULL,
+      body TEXT NOT NULL,
+      metadata JSONB DEFAULT '{}',
+      parent_id TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      processed_at TIMESTAMPTZ
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_agent_msg_to ON agent_messages(to_agent, status, created_at);
+    CREATE INDEX IF NOT EXISTS idx_agent_msg_from ON agent_messages(from_agent, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_agent_msg_parent ON agent_messages(parent_id);
   `);
 
   logger.info('PostgreSQL tables initialized');

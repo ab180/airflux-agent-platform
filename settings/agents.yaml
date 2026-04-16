@@ -21,6 +21,8 @@
     - listFiles
     - renderChart
     - generateChartData
+    - sendAgentMessage
+    - getAgentMessages
   maxSteps: 8
   temperature: 0
   advisor:
@@ -50,6 +52,8 @@
     - getAgentInfo
     - getSystemInfo
     - httpGet
+    - sendAgentMessage
+    - getAgentMessages
   maxSteps: 5
   temperature: 0
 

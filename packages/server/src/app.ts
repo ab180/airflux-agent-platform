@@ -12,6 +12,7 @@ import { healthRoute } from './routes/health.js';
 import { slackRoute } from './routes/slack.js';
 import { conversationRoutes } from './routes/conversations.js';
 import { cliAuthRoutes } from './routes/cli-auth.js';
+import { messageRoutes } from './routes/messages.js';
 
 export const app = new Hono();
 
@@ -59,6 +60,7 @@ app.route('/api', cliAuthRoutes);
 // Admin API endpoints (requires auth in production)
 app.use('/api/admin/*', adminAuth);
 app.route('/api/admin', adminRoutes);
+app.route('/api/admin/messages', messageRoutes);
 
 // Root info endpoint
 app.get('/', (c) =>

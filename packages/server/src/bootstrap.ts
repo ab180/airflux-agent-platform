@@ -884,6 +884,46 @@ function registerBuiltInTools(): void {
     },
   });
 
+  // ─── Inter-agent message bus tools ──────────────────────────────
+  ToolRegistry.register('sendAgentMessage', {
+    description: '다른 에이전트에게 메시지를 보냅니다. 협업이 필요할 때 사용합니다.',
+    inputSchema: z.object({
+      toAgent: z.string().describe('수신 에이전트 이름 (예: "data-agent", "research-agent", "*" for broadcast)'),
+      subject: z.string().describe('메시지 제목 (간결하게)'),
+      body: z.string().describe('메시지 본문'),
+      type: z.enum(['request', 'notification', 'finding']).optional().describe('메시지 유형 (기본: request)'),
+      priority: z.enum(['low', 'normal', 'high', 'urgent']).optional().describe('우선순위 (기본: normal)'),
+    }),
+    execute: async (input: unknown) => {
+      const { sendMessage } = await import('./bus/message-bus.js');
+      const { toAgent, subject, body, type, priority } = input as {
+        toAgent: string; subject: string; body: string;
+        type?: 'request' | 'notification' | 'finding'; priority?: 'low' | 'normal' | 'high' | 'urgent';
+      };
+      // Prevent self-messaging loops
+      const msgId = await sendMessage({ fromAgent: 'agent', toAgent, subject, body, type, priority });
+      return { sent: true, messageId: msgId, to: toAgent };
+    },
+  });
+
+  ToolRegistry.register('getAgentMessages', {
+    description: '에이전트 메시지함을 확인합니다. 다른 에이전트가 보낸 메시지를 읽습니다.',
+    inputSchema: z.object({
+      agentName: z.string().optional().describe('확인할 에이전트 이름 (기본: 전체)'),
+      limit: z.number().optional().describe('최대 메시지 수 (기본: 10)'),
+    }),
+    execute: async (input: unknown) => {
+      const { getPendingMessages, getRecentMessages, getMessageStats } = await import('./bus/message-bus.js');
+      const { agentName, limit } = input as { agentName?: string; limit?: number };
+      if (agentName) {
+        const pending = await getPendingMessages(agentName, limit || 10);
+        return { agent: agentName, pendingCount: pending.length, messages: pending };
+      }
+      const [recent, stats] = await Promise.all([getRecentMessages(limit || 20), getMessageStats()]);
+      return { stats, recentMessages: recent };
+    },
+  });
+
   logger.info("Tools registered", { count: ToolRegistry.list().length });
   logger.info("Domain glossary loaded", { terms: glossary.listTerms().length });
   logger.info("Semantic layer loaded", { tables: semanticLayer.listTables().length, metrics: semanticLayer.listMetrics().length });
