@@ -4,6 +4,13 @@
  * Agents communicate by sending messages through this bus.
  * Messages are typed (request/response/notification/finding) and
  * can be threaded via parent_id.
+ *
+ * ---
+ * FROZEN 2026-04-18 — expansion paused
+ *
+ * Existing queue/store functions remain usable. No new message types, no
+ * new producers/consumers until a documented multi-agent user story
+ * exists. See docs/FROZEN.md.
  */
 
 import { randomUUID } from 'crypto';

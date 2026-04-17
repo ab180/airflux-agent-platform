@@ -5,6 +5,14 @@
  * at the configured intervals. Results are posted to the message bus.
  *
  * For infrastructure deployment, replace with SST Cron / CloudWatch Events.
+ *
+ * ---
+ * FROZEN 2026-04-18 — autonomous heartbeat concept
+ *
+ * The ops-agent "heartbeat" (every 2min autonomous tick) is paused at the
+ * YAML level (settings/agents.yaml -> ops-agent -> heartbeat.enabled = false).
+ * Do not reintroduce autonomous loops here or in agent YAML without an
+ * unfreeze per docs/FROZEN.md. Explicit, user-initiated schedules are fine.
  */
 
 import { schedule as cronSchedule, validate as cronValidate, type ScheduledTask } from 'node-cron';

@@ -4,6 +4,13 @@
  *
  * Codex CLI v0.121.0+: `codex exec -m MODEL "prompt"` or stdin.
  * Default model: gpt-5.4.
+ *
+ * ---
+ * FROZEN 2026-04-18 — production path paused
+ *
+ * Local experimentation remains allowed. Production model-factory must not
+ * route through this provider until a business need for an OpenAI-specific
+ * model is established. See docs/FROZEN.md.
  */
 
 import { execFileSync } from 'child_process';

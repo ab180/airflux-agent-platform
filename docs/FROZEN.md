@@ -18,7 +18,9 @@ not being extended. Each entry states:
   company platform vision.
 - **Unfreeze**: at least 2 real scheduled reports in production use with
   positive user feedback.
-- **Runtime guard**: heartbeat only starts when `AIRFLUX_ENABLE_HEARTBEAT=true`.
+- **Runtime guard**: set `enabled: false` on the `heartbeat` schedule under
+  `ops-agent` in `settings/agents.yaml`. Scheduler already skips disabled
+  entries (see `scheduler.ts:47`).
 - **Owner**: Hyeonjae
 
 ### 2. Inter-agent message bus (expansion)

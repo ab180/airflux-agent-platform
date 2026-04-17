@@ -61,7 +61,7 @@
       cron: "*/2 * * * *"
       question: "시스템 상태를 확인하고 요약해주세요. 에이전트 가동 상태, 등록된 도구 수를 간결하게 보고."
       channels: []
-      enabled: true
+      enabled: false  # FROZEN 2026-04-18 — see docs/FROZEN.md (ops-agent heartbeat)
 
 # Data Agent — 데이터 분석 전문
 - name: data-agent
