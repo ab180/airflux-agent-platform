@@ -14,7 +14,7 @@ describe('AgentRouter', () => {
     ]);
   });
 
-  it('routes by keyword match', () => {
+  it('routes by keyword match', async () => {
     const router = new AgentRouter({
       rules: [
         { agent: 'assistant', priority: 10, keywords: ['분석', '알려'] },
@@ -23,11 +23,11 @@ describe('AgentRouter', () => {
       fallback: 'echo',
     });
 
-    expect(router.route('데이터를 분석해줘').agent).toBe('assistant');
-    expect(router.route('test').agent).toBe('echo');
+    expect((await router.route('데이터를 분석해줘')).agent).toBe('assistant');
+    expect((await router.route('test')).agent).toBe('echo');
   });
 
-  it('routes by regex pattern', () => {
+  it('routes by regex pattern', async () => {
     const router = new AgentRouter({
       rules: [
         { agent: 'assistant', priority: 10, patterns: ['\\bDAU\\b'] },
@@ -35,10 +35,10 @@ describe('AgentRouter', () => {
       fallback: 'echo',
     });
 
-    expect(router.route('앱 123의 DAU 알려줘').agent).toBe('assistant');
+    expect((await router.route('앱 123의 DAU 알려줘')).agent).toBe('assistant');
   });
 
-  it('falls back when no rules match', () => {
+  it('falls back when no rules match', async () => {
     const router = new AgentRouter({
       rules: [
         { agent: 'assistant', priority: 10, keywords: ['분석'] },
@@ -46,11 +46,11 @@ describe('AgentRouter', () => {
       fallback: 'echo',
     });
 
-    expect(router.route('xyz random text').agent).toBe('echo');
-    expect(router.route('xyz random text').matchedRule).toBeNull();
+    expect((await router.route('xyz random text')).agent).toBe('echo');
+    expect((await router.route('xyz random text')).matchedRule).toBeNull();
   });
 
-  it('respects priority order', () => {
+  it('respects priority order', async () => {
     const router = new AgentRouter({
       rules: [
         { agent: 'echo', priority: 1, keywords: ['test'] },
@@ -60,7 +60,7 @@ describe('AgentRouter', () => {
     });
 
     // Higher priority (assistant=10) wins over lower (echo=1)
-    expect(router.route('test').agent).toBe('assistant');
+    expect((await router.route('test')).agent).toBe('assistant');
   });
 
   it('skips disabled agents', async () => {
@@ -76,10 +76,10 @@ describe('AgentRouter', () => {
     });
 
     // assistant is disabled, so echo (lower priority) should match
-    expect(router.route('분석해줘').agent).toBe('echo');
+    expect((await router.route('분석해줘')).agent).toBe('echo');
   });
 
-  it('includes matched rule info', () => {
+  it('includes matched rule info', async () => {
     const router = new AgentRouter({
       rules: [
         { agent: 'assistant', priority: 10, keywords: ['분석'] },
@@ -87,7 +87,28 @@ describe('AgentRouter', () => {
       fallback: 'echo',
     });
 
-    const result = router.route('분석해줘');
+    const result = await router.route('분석해줘');
     expect(result.matchedRule).toBe('keyword:분석');
+  });
+
+  it('uses llm router when keyword rules miss', async () => {
+    const router = new AgentRouter(
+      {
+        rules: [],
+        fallback: 'echo',
+      },
+      {
+        llmRouter: async (query, candidates) => {
+          expect(query).toBe('원인 분석 부탁해');
+          expect(candidates.map(candidate => candidate.name)).toEqual(['echo', 'assistant']);
+          return { agent: 'assistant', reason: '분석 요청' };
+        },
+      },
+    );
+
+    const result = await router.route('원인 분석 부탁해');
+    expect(result.agent).toBe('assistant');
+    expect(result.llmRouted).toBe(true);
+    expect(result.reason).toBe('분석 요청');
   });
 });

@@ -1,10 +1,17 @@
-import { API_BASE, ADMIN_API_KEY } from "./config";
+import { API_BASE } from "./config";
 
-function withAdminHeader(path: string, init?: RequestInit): RequestInit {
-  if (!path.includes("/api/admin/")) return init ?? {};
-  const headers = new Headers(init?.headers);
-  headers.set("x-admin-key", ADMIN_API_KEY);
-  return { ...init, headers };
+function resolveClientPath(path: string): string {
+  if (path.startsWith("/api/admin/")) {
+    return `/api/proxy${path.slice("/api".length)}`;
+  }
+  if (
+    path.startsWith("/api/mcp/") ||
+    path.startsWith("/api/agent/") ||
+    path.startsWith("/api/conversations")
+  ) {
+    return path;
+  }
+  return `${API_BASE}${path}`;
 }
 
 /**
@@ -15,7 +22,7 @@ export async function fetchClient<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, withAdminHeader(path, init));
+  const res = await fetch(resolveClientPath(path), init);
   if (!res.ok) {
     // Try to extract error message from JSON response body
     let message = `API ${path}: ${res.status}`;

@@ -13,6 +13,7 @@ import { slackRoute } from './routes/slack.js';
 import { conversationRoutes } from './routes/conversations.js';
 import { cliAuthRoutes } from './routes/cli-auth.js';
 import { messageRoutes } from './routes/messages.js';
+import { mcpRoutes } from './routes/mcp.js';
 
 export const app = new Hono();
 
@@ -56,6 +57,9 @@ app.route('/api', conversationRoutes);
 
 // CLI auth (trigger claude/codex login from dashboard)
 app.route('/api', cliAuthRoutes);
+
+// User MCP connections
+app.route('/api', mcpRoutes);
 
 // Admin API endpoints (requires auth in production)
 app.use('/api/admin/*', adminAuth);

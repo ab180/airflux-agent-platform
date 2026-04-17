@@ -526,7 +526,7 @@ adminRoutes.post('/eval/run', async (c) => {
   for (const tc of dataset) {
     const startTime = performance.now();
     try {
-      const routed = getRouter().route(tc.question);
+      const routed = await getRouter().route(tc.question);
       const agent = AgentRegistry.getOptional(routed.agent);
       const agentName = routed.agent;
       let response = '';

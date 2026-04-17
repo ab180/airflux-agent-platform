@@ -1,0 +1,71 @@
+servers: []
+# Example:
+# - name: jira
+#   agents: [chief-agent, ops-agent]
+#   transport: http
+#   url: https://your-mcp-gateway.example.com/mcp
+#   auth:
+#     mode: personal
+#     fields:
+#       - key: token
+#         label: API Token
+#         placeholder: xoxp-... or Atlassian token
+#   headers:
+#     Authorization: Bearer ${user.token}
+#   tools:
+#     - name: search
+#       description: Search issues/documents from the MCP server
+#       inputSchema:
+#         type: object
+#         properties:
+#           query:
+#             type: string
+#
+# Local stdio example:
+# - name: github-local
+#   agents: [research-agent, admin-agent]
+#   transport: stdio
+#   command:
+#     - npx
+#     - -y
+#     - your-mcp-server-package
+#   auth:
+#     mode: personal
+#     fields:
+#       - key: token
+#         label: GitHub Token
+#         placeholder: ghp_...
+#   env:
+#     GITHUB_TOKEN: ${user.token}
+#   tools:
+#     - name: search_repositories
+#       description: Search repositories via MCP
+#       inputSchema:
+#         type: object
+#         properties:
+#           query:
+#             type: string
+#
+# Google Calendar example:
+# - name: google-calendar
+#   agents: [chief-agent, assistant-agent]
+#   transport: http
+#   url: https://your-mcp-gateway.example.com/calendar
+#   auth:
+#     mode: personal
+#     fields:
+#       - key: token
+#         label: Google OAuth Token
+#         placeholder: ya29...
+#   headers:
+#     Authorization: Bearer ${user.token}
+#   tools:
+#     - name: list_events
+#       description: List calendar events for a date range
+#       inputSchema:
+#         type: object
+#         properties:
+#           start:
+#             type: string
+#           end:
+#             type: string

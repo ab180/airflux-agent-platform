@@ -87,6 +87,8 @@ export interface AgentConfig {
 export interface MCPServerConfig {
   /** Unique name for this MCP server */
   name: string;
+  /** Agents that should automatically receive this server's tools */
+  agents?: string[];
   /** Transport type */
   transport: 'http' | 'stdio';
   /** URL for HTTP transport */
@@ -97,6 +99,34 @@ export interface MCPServerConfig {
   headers?: Record<string, string>;
   /** Environment variables for stdio transport */
   env?: Record<string, string>;
+  /** Optional auth metadata for shared or per-user credentials */
+  auth?: MCPAuthConfig;
+  /** Optional static tool catalog for auth-protected servers */
+  tools?: MCPToolConfig[];
+}
+
+export interface MCPAuthFieldConfig {
+  /** Field key used in ${user.<key>} placeholders */
+  key: string;
+  /** Display label in the UI */
+  label: string;
+  /** Placeholder hint for the input */
+  placeholder?: string;
+  /** Whether this field is required */
+  required?: boolean;
+}
+
+export interface MCPAuthConfig {
+  /** shared = platform-managed env vars, personal = user-provided tokens */
+  mode?: 'shared' | 'personal';
+  /** Optional list of required user credential fields */
+  fields?: MCPAuthFieldConfig[];
+}
+
+export interface MCPToolConfig {
+  name: string;
+  description: string;
+  inputSchema?: unknown;
 }
 
 /**

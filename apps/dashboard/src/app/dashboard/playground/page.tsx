@@ -4,7 +4,9 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { ChatMessage } from "@/components/chat/chat-message";
 import type { ChartData } from "@/components/chat/data-chart";
-import { fetchClient, postClient } from "@/lib/client-api";
+import { fetchClient } from "@/lib/client-api";
+
+const SESSION_STORAGE_KEY = "airflux-playground-session-id";
 
 interface Message {
   id: string;
@@ -23,6 +25,38 @@ interface Message {
   feedbackSent?: "positive" | "negative";
 }
 
+interface StoredMessage {
+  id: string;
+  role: "user" | "agent";
+  text: string;
+  agent?: string;
+  traceId?: string;
+  durationMs?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  model?: string;
+  toolCalls?: string[];
+  createdAt: string;
+}
+
+function toUIMessage(message: StoredMessage): Message {
+  return {
+    id: message.id,
+    role: message.role,
+    text: message.text,
+    agent: message.agent,
+    traceId: message.traceId,
+    durationMs: message.durationMs,
+    tokens:
+      message.inputTokens || message.outputTokens
+        ? (message.inputTokens || 0) + (message.outputTokens || 0)
+        : undefined,
+    model: message.model,
+    toolCalls: message.toolCalls,
+    timestamp: message.createdAt,
+  };
+}
+
 export default function PlaygroundPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -31,7 +65,8 @@ export default function PlaygroundPage() {
     { value: "", label: "자동 선택" },
   ]);
   const [loading, setLoading] = useState(false);
-  const [sessionId] = useState(() => crypto.randomUUID());
+  const [historyEnabled, setHistoryEnabled] = useState<boolean | null>(null);
+  const [sessionId, setSessionId] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -50,16 +85,54 @@ export default function PlaygroundPage() {
     const params = new URLSearchParams(window.location.search);
     const agentParam = params.get("agent");
     if (agentParam) setAgent(agentParam);
+
+    const storedSessionId = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
+    const nextSessionId = storedSessionId || crypto.randomUUID();
+    window.sessionStorage.setItem(SESSION_STORAGE_KEY, nextSessionId);
+    setSessionId(nextSessionId);
+
+    fetchClient<{ postgres: boolean }>("/api/conversations/status")
+      .then((data) => setHistoryEnabled(data.postgres))
+      .catch(() => setHistoryEnabled(false));
   }, []);
+
+  useEffect(() => {
+    if (!sessionId) return;
+
+    fetchClient<{ messages: StoredMessage[] }>(
+      `/api/conversations/${encodeURIComponent(sessionId)}/messages?limit=200`,
+    )
+      .then((data) => {
+        setMessages((data.messages || []).map(toUIMessage));
+      })
+      .catch(() => {});
+  }, [sessionId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  async function resetConversation() {
+    if (sessionId) {
+      try {
+        await fetchClient(`/api/conversations/${encodeURIComponent(sessionId)}`, {
+          method: "DELETE",
+        });
+      } catch {
+        // Best-effort cleanup only.
+      }
+    }
+
+    const nextSessionId = crypto.randomUUID();
+    window.sessionStorage.setItem(SESSION_STORAGE_KEY, nextSessionId);
+    setSessionId(nextSessionId);
+    setMessages([]);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const query = input.trim();
-    if (!query || loading) return;
+    if (!query || loading || !sessionId) return;
 
     const userMsg: Message = {
       id: crypto.randomUUID(),
@@ -73,7 +146,16 @@ export default function PlaygroundPage() {
     setLoading(true);
 
     try {
-      const data = await postClient<{
+      const res = await fetch("/api/agent/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query,
+          agent: agent || undefined,
+          sessionId,
+        }),
+      });
+      const data = await res.json() as {
         text?: string;
         error?: string;
         agent?: string;
@@ -87,12 +169,11 @@ export default function PlaygroundPage() {
           thinking?: string;
           usage?: { inputTokens?: number; outputTokens?: number };
         };
-      }>("/api/query", {
-        query,
-        agent: agent || undefined,
-        userId: "admin-playground",
-        sessionId,
-      });
+      };
+
+      if (!res.ok) {
+        throw new Error(data.error || `API ${res.status}`);
+      }
 
       const usage = data.metadata?.usage;
       const agentMsg: Message = {
@@ -136,8 +217,13 @@ export default function PlaygroundPage() {
               에이전트에 직접 질문하고 응답을 확인
             </p>
             <span className="font-mono text-[10px] text-muted-foreground/50" title={sessionId}>
-              세션: {sessionId.slice(0, 8)}
+              세션: {sessionId ? sessionId.slice(0, 8) : "loading"}
             </span>
+            {historyEnabled === false && (
+              <span className="text-[10px] text-amber-400/80">
+                history off
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -158,7 +244,7 @@ export default function PlaygroundPage() {
               variant="ghost"
               size="sm"
               className="h-8 text-[11px]"
-              onClick={() => setMessages([])}
+              onClick={() => resetConversation()}
             >
               초기화
             </Button>
@@ -281,7 +367,7 @@ export default function PlaygroundPage() {
             autoFocus
             className="flex-1 rounded-lg border border-border/50 bg-secondary/50 px-4 py-2.5 text-[13px] text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-primary/30 focus:ring-1 focus:ring-primary/20 disabled:opacity-50"
           />
-          <Button type="submit" disabled={loading || !input.trim()} className="h-10 px-5 text-[13px]">
+          <Button type="submit" disabled={loading || !input.trim() || !sessionId} className="h-10 px-5 text-[13px]">
             전송
           </Button>
         </div>
@@ -303,11 +389,14 @@ function FeedbackButtons({
     if (msg.feedbackSent || sending) return;
     setSending(true);
     try {
-      await postClient("/api/feedback", {
-        traceId: msg.traceId,
-        rating,
-        agent: msg.agent || "unknown",
-        userId: "admin-playground",
+      await fetch("/api/agent/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          traceId: msg.traceId,
+          rating,
+          agent: msg.agent || "unknown",
+        }),
       });
       onFeedback(rating);
     } finally {

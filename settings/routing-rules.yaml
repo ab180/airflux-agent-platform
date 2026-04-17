@@ -1,6 +1,8 @@
 # Agent Routing Rules
 # 키워드 매칭으로 빠르게 라우팅, 매칭 실패 시 chief-agent가 처리
 
+llmRouterEnabled: true
+
 rules:
   - agent: data-agent
     priority: 100

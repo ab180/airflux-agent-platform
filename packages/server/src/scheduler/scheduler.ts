@@ -13,6 +13,7 @@ import type { AgentContext, ScheduleConfig } from '@airflux/core';
 import { HttpResponseChannel } from '@airflux/core';
 import { sendMessage } from '../bus/message-bus.js';
 import { logger } from '../lib/logger.js';
+import { runWithRequestContext } from '../runtime/request-context.js';
 
 interface ScheduleJob {
   agentName: string;
@@ -91,7 +92,12 @@ export class Scheduler {
     };
 
     try {
-      const result = await AgentRegistry.execute(agentName, context);
+      const result = await runWithRequestContext({
+        userId: 'scheduler',
+        sessionId: context.sessionId,
+        source: 'cron',
+        agentName,
+      }, () => AgentRegistry.execute(agentName, context));
       const durationMs = Math.round(performance.now() - startTime);
 
       // Post result to message bus as a finding

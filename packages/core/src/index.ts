@@ -14,6 +14,9 @@ export type {
   ModelTier,
   AdvisorConfig,
   MCPServerConfig,
+  MCPAuthConfig,
+  MCPAuthFieldConfig,
+  MCPToolConfig,
   SubagentConfig,
 } from './types/agent.js';
 
@@ -47,7 +50,14 @@ export { ConsoleResponseChannel, HttpResponseChannel } from './channels/console.
 
 // Routing
 export { AgentRouter } from './routing/router.js';
-export type { RoutingRule, RoutingConfig } from './routing/router.js';
+export type {
+  RoutingRule,
+  RoutingConfig,
+  RoutingCandidate,
+  LLMRouteDecision,
+  RouteResult,
+  AgentRouterOptions,
+} from './routing/router.js';
 
 // Utils
 export { normalizeKoreanTime, extractTimeExpressions } from './utils/korean-time.js';

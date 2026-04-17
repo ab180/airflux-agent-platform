@@ -19,6 +19,7 @@ import { recordCost } from '../llm/cost-tracker.js';
 import { logger } from '../lib/logger.js';
 import { getOrCreateSession, appendToSession, getSessionHistory } from '../store/session-store.js';
 import { startExecution, completeExecution, failExecution } from '../store/execution-state.js';
+import { runWithRequestContext } from '../runtime/request-context.js';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { randomUUID } from 'crypto';
 
@@ -123,7 +124,7 @@ slackRoute.post('/slack/events', async (c) => {
     }
 
     // Route to agent
-    const routed = getRouter().route(query);
+    const routed = await getRouter().route(query);
     const agentName = routed.agent;
     const traceId = randomUUID();
 
@@ -142,7 +143,12 @@ slackRoute.post('/slack/events', async (c) => {
 
     const startTime = performance.now();
     try {
-      const result = await AgentRegistry.execute(agentName, {
+      const result = await runWithRequestContext({
+        userId: `slack:${userId}`,
+        sessionId,
+        source: 'slack',
+        agentName,
+      }, () => AgentRegistry.execute(agentName, {
         question: query,
         userId: `slack:${userId}`,
         sessionId,
@@ -150,7 +156,7 @@ slackRoute.post('/slack/events', async (c) => {
         responseChannel,
         sessionHistory: sessionHistory || undefined,
         metadata: { channel: channelId, threadTs },
-      });
+      }));
 
       const durationMs = Math.round(performance.now() - startTime);
       completeExecution(traceId, durationMs);
@@ -254,7 +260,7 @@ slackRoute.post('/slack/command', async (c) => {
   }
 
   // Route and execute (respond immediately, then send result via response_url)
-  const routed = getRouter().route(query);
+  const routed = await getRouter().route(query);
   const agentName = routed.agent;
 
   // Immediate ack (Slack requires response within 3s)
@@ -267,14 +273,20 @@ slackRoute.post('/slack/command', async (c) => {
     const startTime = performance.now();
     try {
       const channel = new SlackResponseChannel(responseUrl, channelId);
-      const result = await AgentRegistry.execute(agentName, {
+      const slashSessionId = `slack-cmd:${channelId}:${traceId}`;
+      const result = await runWithRequestContext({
+        userId: `slack:${userId}`,
+        sessionId: slashSessionId,
+        source: 'slack',
+        agentName,
+      }, () => AgentRegistry.execute(agentName, {
         question: query,
         userId: `slack:${userId}`,
-        sessionId: `slack-cmd:${channelId}:${traceId}`,
+        sessionId: slashSessionId,
         source: 'slack',
         responseChannel: channel,
         metadata: { channel: channelId, slashCommand: true },
-      });
+      }));
 
       const durationMs = Math.round(performance.now() - startTime);
       completeExecution(traceId, durationMs);

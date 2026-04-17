@@ -1,5 +1,6 @@
 import { logger } from './lib/logger.js';
 import { resolve } from 'path';
+import { generateObject } from 'ai';
 import {
   AgentRegistry,
   SkillRegistry,
@@ -15,8 +16,21 @@ import {
   FeatureFlagService,
   SemanticLayer,
 } from '@airflux/core';
-import type { AgentConfig, AgentTool, SkillDefinition, RoutingConfig, GlossaryConfig, FeatureFlagsConfig, SemanticLayerConfig } from '@airflux/core';
+import type {
+  AgentConfig,
+  AgentTool,
+  SkillDefinition,
+  RoutingConfig,
+  GlossaryConfig,
+  FeatureFlagsConfig,
+  SemanticLayerConfig,
+  MCPServerConfig,
+  RoutingCandidate,
+  LLMRouteDecision,
+} from '@airflux/core';
 import { z } from 'zod';
+import { createModelAsync } from './llm/model-factory.js';
+import { attachMCPToolsToAgents, registerMCPToolsToRegistry } from './mcp/client.js';
 
 export async function bootstrap(settingsPath?: string): Promise<void> {
   const settingsDir = settingsPath || process.env.SETTINGS_DIR || resolve(process.cwd(), '../../settings');
@@ -26,6 +40,13 @@ export async function bootstrap(settingsPath?: string): Promise<void> {
 
   // 1. Register built-in tools
   registerBuiltInTools();
+
+  // 1.5. Discover and register MCP tools before agents load their tool lists
+  const mcpConfig = loadConfigOptional<{ servers?: MCPServerConfig[] }>('mcp-servers', { servers: [] });
+  const mcpRegistry = await registerMCPToolsToRegistry(mcpConfig.servers || []);
+  if (mcpRegistry.all.length > 0) {
+    logger.info('MCP tools registered', { count: mcpRegistry.all.length, tools: mcpRegistry.all });
+  }
 
   // 2. Load and register skills from YAML
   try {
@@ -53,7 +74,8 @@ export async function bootstrap(settingsPath?: string): Promise<void> {
   // 4. Load and initialize agents from YAML
   try {
     const agentConfigs = loadConfig<AgentConfig[]>('agents');
-    await AgentRegistry.initialize(agentConfigs);
+    const hydratedAgentConfigs = attachMCPToolsToAgents(agentConfigs, mcpConfig.servers || [], mcpRegistry);
+    await AgentRegistry.initialize(hydratedAgentConfigs);
     const agents = AgentRegistry.list();
     logger.info("Agents initialized", { count: agents.length, names: agents.map(a => a.name) });
   } catch (e) {
@@ -92,8 +114,15 @@ export async function bootstrap(settingsPath?: string): Promise<void> {
     rules: [],
     fallback: 'echo-agent',
   });
-  _router = new AgentRouter(routingConfig);
-  logger.info("Router initialized", { rules: routingConfig.rules.length, fallback: routingConfig.fallback });
+  const llmRouterEnabled = routingConfig.llmRouterEnabled !== false && process.env.LLM_ROUTER_ENABLED !== 'false';
+  _router = new AgentRouter(routingConfig, {
+    llmRouter: llmRouterEnabled ? routeWithLLM : undefined,
+  });
+  logger.info("Router initialized", {
+    rules: routingConfig.rules.length,
+    fallback: routingConfig.fallback,
+    llmRouterEnabled,
+  });
 
   // 7. Crash recovery: mark stale executions as timeout (GSD-2 pattern)
   try {
@@ -124,6 +153,51 @@ export async function bootstrap(settingsPath?: string): Promise<void> {
 
 let _router: AgentRouter | null = null;
 let _featureFlags: FeatureFlagService | null = null;
+
+async function routeWithLLM(
+  query: string,
+  candidates: RoutingCandidate[],
+): Promise<LLMRouteDecision | null> {
+  if (candidates.length === 0) return null;
+
+  try {
+    const model = await createModelAsync('fast');
+    const { object } = await generateObject({
+      model,
+      temperature: 0,
+      schema: z.object({
+        agent: z.string(),
+        reason: z.string().optional(),
+      }),
+      system: [
+        '당신은 Airflux Agent Platform의 라우터입니다.',
+        '사용자 질문을 가장 적절한 에이전트 하나로 분류하세요.',
+        '반드시 제공된 후보 중 하나만 선택하세요.',
+        '데이터/지표/SQL은 data-agent, 코드/문서/리서치는 research-agent, 운영 상태는 ops-agent, 파일 변경/명령/PR은 admin-agent, 그 외는 chief-agent 또는 assistant-agent를 선택하세요.',
+      ].join('\n'),
+      prompt: JSON.stringify({
+        query,
+        candidates,
+      }),
+    });
+
+    const selected = candidates.find(candidate => candidate.name === object.agent);
+    if (!selected) {
+      logger.warn('LLM router returned unknown agent', { query, agent: object.agent });
+      return null;
+    }
+
+    return {
+      agent: selected.name,
+      reason: object.reason || null,
+    };
+  } catch (e) {
+    logger.warn('LLM router failed, using fallback', {
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return null;
+  }
+}
 
 export function getFeatureFlags(): FeatureFlagService {
   if (!_featureFlags) {

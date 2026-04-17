@@ -6,9 +6,12 @@ import { randomUUID } from 'crypto';
 import { validateQueryBody } from '../middleware/validation.js';
 import { insertLog } from '../store/log-store.js';
 import { getOrCreateSession, appendToSession, getSessionHistory } from '../store/session-store.js';
+import { addMessage, getOrCreateConversation } from '../store/conversation-store.js';
 import { getRouter } from '../bootstrap.js';
 import { recordCost, checkBudget } from '../llm/cost-tracker.js';
 import { startExecution, completeExecution, failExecution } from '../store/execution-state.js';
+import { runWithRequestContext } from '../runtime/request-context.js';
+import { resolveTrustedUserId } from '../security/trusted-user.js';
 
 export const queryRoute = new Hono();
 
@@ -26,6 +29,7 @@ queryRoute.post('/query', async (c) => {
     return c.json({ success: false, error: validation.error }, 400);
   }
   const { data } = validation;
+  data.userId = resolveTrustedUserId(new Headers(c.req.raw.headers), 'anonymous');
 
   // Debug mode: strip "debug:" prefix and enable diagnostics
   let debugMode = false;
@@ -103,12 +107,16 @@ queryRoute.post('/query', async (c) => {
     const routingStartTime = performance.now();
     let agentName: string;
     let matchedRule: string | null = null;
+    let llmRouted = false;
+    let llmReason: string | null = null;
     if (data.agent) {
       agentName = data.agent;
     } else {
-      const routed = getRouter().route(data.query);
+      const routed = await getRouter().route(data.query);
       agentName = routed.agent;
       matchedRule = routed.matchedRule;
+      llmRouted = routed.llmRouted === true;
+      llmReason = routed.reason || null;
     }
     const routingDurationMs = Math.round(performance.now() - routingStartTime);
 
@@ -117,8 +125,24 @@ queryRoute.post('/query', async (c) => {
         durationMs: routingDurationMs,
         agent: agentName,
         matchedRule,
+        llmRouted,
+        llmReason,
         explicitAgent: !!data.agent,
       };
+    }
+
+    try {
+      await getOrCreateConversation(sessionId, data.userId, agentName);
+      await addMessage({
+        conversationId: sessionId,
+        role: 'user',
+        text: data.query,
+      });
+    } catch (e) {
+      logger.warn('Conversation persistence skipped for user message', {
+        sessionId,
+        error: e instanceof Error ? e.message : String(e),
+      });
     }
 
     // Budget check (GSD-2 budget enforcement pattern)
@@ -136,7 +160,12 @@ queryRoute.post('/query', async (c) => {
     // Agent execution (GSD-2 state machine: track lifecycle)
     startExecution(traceId, agentName, data.query, data.userId, 'api');
     const agentStartTime = performance.now();
-    const result = await AgentRegistry.execute(agentName, context);
+    const result = await runWithRequestContext({
+      userId: data.userId,
+      sessionId,
+      source: 'api',
+      agentName,
+    }, () => AgentRegistry.execute(agentName, context));
     const agentDurationMs = Math.round(performance.now() - agentStartTime);
     const totalDurationMs = Math.round(performance.now() - startTime);
 
@@ -145,6 +174,10 @@ queryRoute.post('/query', async (c) => {
     } else {
       failExecution(traceId, result.error || 'Unknown', totalDurationMs);
     }
+
+    const usage = (result.metadata as Record<string, unknown>)?.usage as
+      | { inputTokens?: number; outputTokens?: number }
+      | undefined;
 
     if (debugMode) {
       debugInfo.execution = {
@@ -181,13 +214,29 @@ queryRoute.post('/query', async (c) => {
       }
     }
 
+    try {
+      await addMessage({
+        conversationId: sessionId,
+        role: 'agent',
+        text: result.text || result.error || '[empty response]',
+        agent: agentName,
+        traceId,
+        durationMs: totalDurationMs,
+        inputTokens: usage?.inputTokens,
+        outputTokens: usage?.outputTokens,
+        model: (result.metadata as Record<string, unknown> | undefined)?.model as string | undefined,
+        toolCalls: (result.metadata as Record<string, unknown> | undefined)?.toolCalls as string[] | undefined,
+      });
+    } catch (e) {
+      logger.warn('Conversation persistence skipped for agent message', {
+        sessionId,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+
     await responseChannel.send(result);
 
     // Track cost (GSD-2 metrics ledger pattern)
-    const usage = (result.metadata as Record<string, unknown>)?.usage as
-      | { inputTokens?: number; outputTokens?: number }
-      | undefined;
-
     if (usage?.inputTokens || usage?.outputTokens) {
       const modelTier = (result.metadata as Record<string, unknown>)?.model as string || 'default';
       recordCost({
@@ -234,7 +283,9 @@ queryRoute.post('/query', async (c) => {
       agent: agentName,
       traceId,
       sessionId,
-      routing: matchedRule ? { rule: matchedRule } : undefined,
+      routing: matchedRule || llmRouted || llmReason
+        ? { rule: matchedRule, llmRouted, reason: llmReason }
+        : undefined,
       text: result.text,
       data: result.data,
       error: result.error,

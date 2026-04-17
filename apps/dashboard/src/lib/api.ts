@@ -1,4 +1,4 @@
-import { API_BASE, ADMIN_API_KEY } from "./config";
+import { API_BASE } from "./config";
 
 // In Docker, SSR runs inside the dashboard container where localhost:3000 is unreachable.
 // API_URL (no NEXT_PUBLIC_ prefix) is only available server-side and points to the
@@ -8,11 +8,11 @@ const SERVER_API_BASE =
     ? (process.env.API_URL ?? API_BASE)
     : API_BASE;
 
-// Server-side SSR can read ADMIN_API_KEY (non-public) at runtime; client falls back to build-time NEXT_PUBLIC value.
+// Server-side SSR can read ADMIN_API_KEY (non-public) at runtime.
 const SSR_ADMIN_KEY =
   typeof window === "undefined"
-    ? (process.env.ADMIN_API_KEY ?? ADMIN_API_KEY)
-    : ADMIN_API_KEY;
+    ? (process.env.ADMIN_API_KEY ?? "airflux-local")
+    : "airflux-local";
 
 function adminHeaders(path: string): HeadersInit {
   if (!path.includes("/api/admin/")) return {};
