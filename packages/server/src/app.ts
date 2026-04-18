@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger as honoLogger } from 'hono/logger';
 import { logger } from './lib/logger.js';
-import { securityHeaders, requestId, bodyLimit, adminAuth } from './middleware/security.js';
+import { securityHeaders, requestId, bodyLimit, adminAuth, trustedUserContext } from './middleware/security.js';
 import { serverTiming } from './middleware/timing.js';
 import { rateLimit } from './middleware/rate-limit.js';
 import { queryRoute } from './routes/query.js';
@@ -22,6 +22,9 @@ app.use('*', requestId);
 app.use('*', serverTiming);
 app.use('*', securityHeaders);
 app.use('*', honoLogger());
+// Populate c.set('userId') + c.set('role') from trusted-user HMAC if present.
+// Never rejects — downstream middleware (adminAuth, rbac) decides policy.
+app.use('/api/*', trustedUserContext);
 
 // CORS: restrict origin in production, allow all in dev
 app.use('/api/*', cors({

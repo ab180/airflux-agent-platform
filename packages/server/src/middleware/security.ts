@@ -1,6 +1,7 @@
 import { createMiddleware } from 'hono/factory';
 import type { Context, Next } from 'hono';
 import { timingSafeEqual } from 'crypto';
+import { verifyTrustedUserHeadersFull } from '../security/trusted-user.js';
 
 /**
  * Security headers middleware.
@@ -47,17 +48,35 @@ function safeCompare(a: string, b: string): boolean {
 }
 
 /**
+ * Populate userId + role from a trusted-user HMAC if present.
+ * Never rejects — downstream middleware decides policy. Safe to apply broadly.
+ */
+export const trustedUserContext = createMiddleware(async (c: Context, next: Next) => {
+  const identity = verifyTrustedUserHeadersFull(new Headers(c.req.raw.headers));
+  if (identity) {
+    c.set('userId', identity.userId);
+    if (identity.role) c.set('role', identity.role);
+  }
+  await next();
+});
+
+/**
  * Admin auth guard.
- * In Phase 0, uses a simple API key from env. Later: SSO/JWT.
+ * Accepts either:
+ *   1. ADMIN_API_KEY shared secret (legacy / machine-to-machine), OR
+ *   2. Trusted-user HMAC with role='admin' (dashboard-signed per-user).
+ * Sets c.set('role', 'admin') on success so downstream rbac middlewares agree.
+ * Phase 2: replace with SSO/JWT.
  */
 export const adminAuth = createMiddleware(async (c: Context, next: Next) => {
   const adminKey = process.env.ADMIN_API_KEY;
 
-  // If no key configured, allow access in development
+  // If no key configured, allow access in development.
   if (!adminKey) {
     if (process.env.NODE_ENV === 'production') {
       return c.json({ success: false, error: 'Admin API key not configured' }, 500);
     }
+    c.set('role', 'admin');
     await next();
     return;
   }
@@ -67,9 +86,20 @@ export const adminAuth = createMiddleware(async (c: Context, next: Next) => {
     ? authHeader.slice(7)
     : c.req.header('x-admin-key');
 
-  if (!providedKey || !safeCompare(providedKey, adminKey)) {
-    return c.json({ success: false, error: 'Unauthorized' }, 401);
+  if (providedKey && safeCompare(providedKey, adminKey)) {
+    c.set('role', 'admin');
+    await next();
+    return;
   }
 
-  await next();
+  // Fallback: trusted-user with admin role (dashboard-signed).
+  const identity = verifyTrustedUserHeadersFull(new Headers(c.req.raw.headers));
+  if (identity?.role === 'admin') {
+    c.set('userId', identity.userId);
+    c.set('role', 'admin');
+    await next();
+    return;
+  }
+
+  return c.json({ success: false, error: 'Unauthorized' }, 401);
 });
