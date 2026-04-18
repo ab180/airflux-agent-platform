@@ -84,12 +84,18 @@ export async function initPgTables(): Promise<void> {
       input_tokens INTEGER NOT NULL DEFAULT 0,
       output_tokens INTEGER NOT NULL DEFAULT 0,
       cost_usd NUMERIC(10, 6) NOT NULL DEFAULT 0,
-      duration_ms INTEGER NOT NULL DEFAULT 0
+      duration_ms INTEGER NOT NULL DEFAULT 0,
+      user_id TEXT NOT NULL DEFAULT 'system'
     );
+
+    -- Migration: add user_id column to existing cost_entries tables.
+    ALTER TABLE cost_entries
+      ADD COLUMN IF NOT EXISTS user_id TEXT NOT NULL DEFAULT 'system';
 
     CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_cost_timestamp ON cost_entries(timestamp DESC);
     CREATE INDEX IF NOT EXISTS idx_cost_agent ON cost_entries(agent, timestamp DESC);
+    CREATE INDEX IF NOT EXISTS idx_cost_user ON cost_entries(user_id, timestamp DESC);
     CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_id, updated_at DESC);
 
     -- Inter-agent message bus (Living Company pattern)

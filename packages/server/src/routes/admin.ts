@@ -12,6 +12,9 @@ import { refreshDailyStats, getDailyStats } from '../store/log-aggregator.js';
 import { getFeatureFlags } from '../bootstrap.js';
 import { isLLMAvailable, getLLMStatus, setApiKey, clearApiKeyCache } from '../llm/model-factory.js';
 import { runEval } from '../eval/runner.js';
+import { getCostByUser } from '../llm/cost-tracker.js';
+import { getCostByUserPg, getCostEntriesForUserPg } from '../store/cost-store.js';
+import { isPostgresAvailable } from '../store/pg.js';
 import { getDailyCostStats } from '../llm/cost-tracker.js';
 import { getSkillStats, getStalenessReport } from '../skills/skill-tracker.js';
 import { getExecutionStats, getStaleExecutions } from '../store/execution-state.js';
@@ -655,6 +658,33 @@ adminRoutes.get('/cost', (c) => {
       powerful: { input: 15.00, output: 75.00, unit: 'per 1M tokens' },
     },
   });
+});
+
+// Per-user cost breakdown. Prefers Postgres (longer history, persistent)
+// and falls back to the in-memory tracker when DATABASE_URL is unset.
+adminRoutes.get('/cost/by-user', async (c) => {
+  const days = Math.min(Number(c.req.query('days')) || 7, 90);
+  if (isPostgresAvailable()) {
+    const users = await getCostByUserPg(days);
+    return c.json({ source: 'postgres', days, users });
+  }
+  const users = getCostByUser();
+  return c.json({ source: 'in-memory', days: 1, users });
+});
+
+adminRoutes.get('/cost/by-user/:userId', async (c) => {
+  const userId = c.req.param('userId');
+  if (!isPostgresAvailable()) {
+    return c.json({
+      source: 'in-memory',
+      userId,
+      entries: [],
+      note: 'Per-entry history requires DATABASE_URL (Postgres). In-memory tracker only aggregates totals.',
+    });
+  }
+  const limit = Math.min(Number(c.req.query('limit')) || 50, 500);
+  const entries = await getCostEntriesForUserPg(userId, limit);
+  return c.json({ source: 'postgres', userId, entries });
 });
 
 // ─── LLM Configuration ──────────────────────────────────────────

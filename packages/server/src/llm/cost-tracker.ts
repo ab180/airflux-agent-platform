@@ -1,7 +1,15 @@
 /**
  * LLM cost tracking module (inspired by GSD-2 metrics ledger pattern).
  * Calculates USD cost from token counts using model-specific pricing.
+ *
+ * User attribution: every cost entry is attributed to a userId. When a
+ * caller does not pass one explicitly, the active request-context userId
+ * is used; absent any context the attribution falls back to 'system'
+ * (scheduler, cron, warm-up calls). This keeps per-user billing consistent
+ * across the admin UI and future chargeback reports.
  */
+
+import { getRequestContext } from '../runtime/request-context.js';
 
 // Pricing per 1M tokens (USD) — Anthropic as of 2026-04
 const MODEL_PRICING: Record<string, { input: number; output: number }> = {
@@ -30,6 +38,7 @@ export interface CostEntry {
   outputTokens: number;
   costUsd: number;
   durationMs: number;
+  userId: string;
 }
 
 /** Calculate USD cost for a given model tier and token usage. */
@@ -49,19 +58,39 @@ let dailyInputTokens = 0;
 let dailyOutputTokens = 0;
 let lastResetDate = new Date().toISOString().slice(0, 10);
 
+interface PerUserTotals {
+  entries: number;
+  totalUsd: number;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+const perUserTotals = new Map<string, PerUserTotals>();
+
 function resetIfNewDay(): void {
   const today = new Date().toISOString().slice(0, 10);
   if (today !== lastResetDate) {
     dailyCostUsd = 0;
     dailyInputTokens = 0;
     dailyOutputTokens = 0;
+    perUserTotals.clear();
     lastResetDate = today;
   }
 }
 
-/** Record a cost entry from an agent execution. */
-export function recordCost(entry: Omit<CostEntry, 'costUsd'>): CostEntry {
+function resolveUserId(explicit: string | undefined): string {
+  if (explicit && explicit.length > 0) return explicit;
+  const ctx = getRequestContext();
+  if (ctx?.userId && ctx.userId.length > 0) return ctx.userId;
+  return 'system';
+}
+
+/** Record a cost entry from an agent execution. userId defaults to request context. */
+export function recordCost(
+  entry: Omit<CostEntry, 'costUsd' | 'userId'> & { userId?: string },
+): CostEntry {
   resetIfNewDay();
+  const userId = resolveUserId(entry.userId);
   const costUsd = calculateCost(entry.model, {
     inputTokens: entry.inputTokens,
     outputTokens: entry.outputTokens,
@@ -71,7 +100,44 @@ export function recordCost(entry: Omit<CostEntry, 'costUsd'>): CostEntry {
   dailyInputTokens += entry.inputTokens;
   dailyOutputTokens += entry.outputTokens;
 
-  return { ...entry, costUsd };
+  const existing = perUserTotals.get(userId) ?? {
+    entries: 0,
+    totalUsd: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+  };
+  perUserTotals.set(userId, {
+    entries: existing.entries + 1,
+    totalUsd: existing.totalUsd + costUsd,
+    inputTokens: existing.inputTokens + entry.inputTokens,
+    outputTokens: existing.outputTokens + entry.outputTokens,
+  });
+
+  return { ...entry, userId, costUsd };
+}
+
+/** Get today's aggregated costs grouped by user. */
+export function getCostByUser(): Array<{
+  userId: string;
+  entries: number;
+  totalUsd: number;
+  inputTokens: number;
+  outputTokens: number;
+}> {
+  resetIfNewDay();
+  return Array.from(perUserTotals.entries()).map(([userId, totals]) => ({
+    userId,
+    ...totals,
+  }));
+}
+
+/** Test-only: reset daily ledger + per-user totals. */
+export function resetDailyCostForTest(): void {
+  dailyCostUsd = 0;
+  dailyInputTokens = 0;
+  dailyOutputTokens = 0;
+  perUserTotals.clear();
+  lastResetDate = new Date().toISOString().slice(0, 10);
 }
 
 /** Check if daily budget is exceeded. Returns null if OK, or error message if over budget. */
