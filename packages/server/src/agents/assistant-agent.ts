@@ -1,6 +1,7 @@
 import { generateText, streamText, stepCountIs } from 'ai';
-import { BaseAgent, loadAgentInstructions } from '@airflux/core';
+import { BaseAgent } from '@airflux/core';
 import type { AgentContext, AgentResult, AgentConfig, AgentTool } from '@airflux/core';
+import { getAgentInstructions } from './instructions.js';
 import { createModelAsync, createModelForProvider } from '../llm/model-factory.js';
 import { isClaudeCliAvailable, callClaudeCli } from '../llm/claude-cli-provider.js';
 import { isCodexCliAvailable, callCodexCli } from '../llm/codex-cli-provider.js';
@@ -190,8 +191,8 @@ export class AssistantAgent extends BaseAgent {
   }
 
   private buildSystemPrompt(sessionHistory?: string): string {
-    // Load freeform instructions from settings/instructions/{agent-name}.md
-    const instructions = loadAgentInstructions(this.name);
+    // DB prompt_versions (current) → filesystem instructions/{agent-name}.md fallback.
+    const instructions = getAgentInstructions(this.name);
 
     // GSD-2 pattern: structured context injection with tool metadata
     const toolDescriptions = Object.entries(this.tools)

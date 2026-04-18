@@ -94,7 +94,11 @@ export default function PromptsPage() {
         <div>
           <h1 className="text-lg font-semibold tracking-tight">프롬프트</h1>
           <p className="text-[13px] text-muted-foreground">
-            에이전트별 시스템 프롬프트 버전 관리
+            에이전트별 시스템 프롬프트 버전 관리 · 저장한 "현재 버전"이
+            즉시 에이전트에 반영됩니다{" "}
+            <span className="text-muted-foreground/70">
+              (없으면 <code className="font-mono text-[11px]">settings/instructions/{"<agent>"}.md</code> 사용)
+            </span>
           </p>
         </div>
         <div className="flex items-center gap-2">
