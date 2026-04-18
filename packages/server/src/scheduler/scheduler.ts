@@ -22,6 +22,21 @@ import { HttpResponseChannel } from '@airflux/core';
 import { sendMessage } from '../bus/message-bus.js';
 import { logger } from '../lib/logger.js';
 import { runWithRequestContext } from '../runtime/request-context.js';
+import { runEval } from '../eval/runner.js';
+
+async function runDailyEvalTask(): Promise<void> {
+  const started = Date.now();
+  logger.info('Daily eval cron started');
+  const run = await runEval({ useJudge: false });
+  logger.info('Daily eval cron completed', {
+    runId: run.id,
+    total: run.totalCases,
+    passed: run.passed,
+    failed: run.failed,
+    score: run.score,
+    durationMs: Date.now() - started,
+  });
+}
 
 interface ScheduleJob {
   agentName: string;
@@ -83,7 +98,34 @@ export class Scheduler {
       }
     }
 
+    // Platform-level crons (not agent-driven). Explicit opt-in via env.
+    this.registerPlatformCrons();
+
     logger.info('Scheduler initialized', { jobs: jobCount });
+  }
+
+  private registerPlatformCrons(): void {
+    if (process.env.AIRFLUX_ENABLE_DAILY_EVAL === 'true') {
+      // 06:00 KST daily — run evaluation without judge (keyword-based pass/fail).
+      // For judge-based scoring, trigger manually with ?useJudge=true.
+      const task = cronSchedule(
+        '0 6 * * *',
+        () => {
+          runDailyEvalTask().catch(err => {
+            logger.error('Daily eval cron failed', {
+              error: err instanceof Error ? err.message : String(err),
+            });
+          });
+        },
+        { timezone: 'Asia/Seoul' },
+      );
+      activeJobs.push({
+        agentName: '_platform',
+        schedule: { name: 'daily-eval', cron: '0 6 * * *', question: '', channels: [], enabled: true },
+        task,
+      });
+      logger.info('Platform cron registered', { name: 'daily-eval', cron: '0 6 * * *', tz: 'Asia/Seoul' });
+    }
   }
 
   private async executeSchedule(agentName: string, schedule: ScheduleConfig): Promise<void> {

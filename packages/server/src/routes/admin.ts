@@ -5,13 +5,13 @@ import {
 } from '@airflux/core';
 import type { SkillDefinition } from '@airflux/core';
 import { queryLogs, getLogStats, getAgentStats, getDetailedMetrics } from '../store/log-store.js';
-import { getGoldenDataset, addTestCase, getEvalRuns, saveEvalRun, seedDefaultTestCases } from '../store/eval-store.js';
-import type { EvalResult } from '../store/eval-store.js';
+import { getGoldenDataset, addTestCase, getEvalRuns, seedDefaultTestCases } from '../store/eval-store.js';
 import { queryFeedback, getFeedbackStats, getFeedbackDetail } from '../store/feedback-store.js';
 import { getDbHealth, cleanupDb } from '../store/db-health.js';
 import { refreshDailyStats, getDailyStats } from '../store/log-aggregator.js';
 import { getFeatureFlags } from '../bootstrap.js';
 import { isLLMAvailable, getLLMStatus, setApiKey, clearApiKeyCache } from '../llm/model-factory.js';
+import { runEval } from '../eval/runner.js';
 import { getDailyCostStats } from '../llm/cost-tracker.js';
 import { getSkillStats, getStalenessReport } from '../skills/skill-tracker.js';
 import { getExecutionStats, getStaleExecutions } from '../store/execution-state.js';
@@ -514,89 +514,18 @@ adminRoutes.post('/eval/dataset', async (c) => {
 });
 
 adminRoutes.post('/eval/run', async (c) => {
-  seedDefaultTestCases();
-  const dataset = getGoldenDataset();
-  if (dataset.length === 0) {
-    return c.json({ success: false, error: 'No test cases in golden dataset' }, 400);
+  // Explicit opt-in for LLM judge on rubric-only cases. Default off because
+  // judge hits the LLM per case (cost + latency). Manual runs that need
+  // qualitative scoring pass ?useJudge=true.
+  const useJudge = c.req.query('useJudge') === 'true';
+
+  try {
+    const run = await runEval({ useJudge });
+    return c.json({ success: true, run });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return c.json({ success: false, error: msg }, 400);
   }
-
-  const results: EvalResult[] = [];
-  const { getRouter } = await import('../bootstrap.js');
-
-  for (const tc of dataset) {
-    const startTime = performance.now();
-    try {
-      const routed = await getRouter().route(tc.question);
-      const agent = AgentRegistry.getOptional(routed.agent);
-      const agentName = routed.agent;
-      let response = '';
-
-      if (agent && agent.isEnabled()) {
-        const { HttpResponseChannel } = await import('@airflux/core');
-        const channel = new HttpResponseChannel();
-        const result = await AgentRegistry.execute(agentName, {
-          question: tc.question,
-          userId: 'eval-system',
-          sessionId: `eval-${Date.now()}`,
-          source: 'api' as const,
-          responseChannel: channel,
-          metadata: {},
-        });
-        response = result.text || result.error || '';
-      }
-
-      const durationMs = Math.round(performance.now() - startTime);
-
-      // Check pass conditions
-      let passed = true;
-      let reason = 'OK';
-
-      if (tc.expectedAgent && tc.expectedAgent !== agentName) {
-        passed = false;
-        reason = `Expected agent ${tc.expectedAgent}, got ${agentName}`;
-      } else if (tc.expectedContains && !response.toLowerCase().includes(tc.expectedContains.toLowerCase())) {
-        passed = false;
-        reason = `Response missing expected text: "${tc.expectedContains}"`;
-      }
-
-      results.push({
-        caseId: tc.id,
-        question: tc.question,
-        expectedAgent: tc.expectedAgent,
-        actualAgent: agentName,
-        expectedContains: tc.expectedContains,
-        actualResponse: response.slice(0, 300),
-        passed,
-        reason,
-        durationMs,
-      });
-    } catch (e) {
-      results.push({
-        caseId: tc.id,
-        question: tc.question,
-        actualAgent: 'error',
-        actualResponse: '',
-        passed: false,
-        reason: `Error: ${e instanceof Error ? e.message : 'unknown'}`,
-        durationMs: Math.round(performance.now() - startTime),
-      });
-    }
-  }
-
-  const passed = results.filter(r => r.passed).length;
-  const failed = results.filter(r => !r.passed).length;
-  const score = results.length > 0 ? Number(((passed / results.length) * 100).toFixed(1)) : 0;
-
-  const run = saveEvalRun({
-    timestamp: new Date().toISOString(),
-    totalCases: results.length,
-    passed,
-    failed,
-    score,
-    results,
-  });
-
-  return c.json({ success: true, run });
 });
 
 adminRoutes.get('/eval/runs', (c) => {
