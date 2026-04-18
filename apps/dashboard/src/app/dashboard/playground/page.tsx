@@ -129,6 +129,121 @@ export default function PlaygroundPage() {
     setMessages([]);
   }
 
+  async function streamAgent(
+    query: string,
+    agentName: string,
+  ): Promise<{ handled: boolean }> {
+    const res = await fetch("/api/agent/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: query, agent: agentName, sessionId }),
+    });
+
+    const ct = res.headers.get("content-type") || "";
+    // Server rejected streaming (e.g. agent can't stream) → caller falls back.
+    if (!res.ok || !ct.includes("text/event-stream") || !res.body) {
+      return { handled: false };
+    }
+
+    const agentMsgId = crypto.randomUUID();
+    const agentMsg: Message = {
+      id: agentMsgId,
+      role: "agent",
+      text: "",
+      agent: agentName,
+      toolCalls: [],
+      timestamp: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, agentMsg]);
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    let textAccum = "";
+    const toolCallNames: string[] = [];
+    const toolMarkers: string[] = [];
+
+    function flushToMessage() {
+      const body = (toolMarkers.length > 0 ? toolMarkers.join("\n") + "\n\n" : "") + textAccum;
+      setMessages((prev) =>
+        prev.map((m) => (m.id === agentMsgId ? { ...m, text: body, toolCalls: [...toolCallNames] } : m)),
+      );
+    }
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+
+      // SSE frames are separated by \n\n.
+      let idx = buf.indexOf("\n\n");
+      while (idx !== -1) {
+        const frame = buf.slice(0, idx);
+        buf = buf.slice(idx + 2);
+        idx = buf.indexOf("\n\n");
+
+        const line = frame.split("\n").find((l) => l.startsWith("data: "));
+        if (!line) continue;
+        let event: { type: string; [k: string]: unknown };
+        try {
+          event = JSON.parse(line.slice(6));
+        } catch {
+          continue;
+        }
+
+        switch (event.type) {
+          case "text":
+            textAccum += String(event.delta || "");
+            flushToMessage();
+            break;
+          case "tool-call": {
+            const tool = String(event.tool || "?");
+            toolCallNames.push(tool);
+            let argsPreview = "";
+            try {
+              argsPreview = JSON.stringify(event.args || {});
+            } catch {
+              argsPreview = "…";
+            }
+            if (argsPreview.length > 120) argsPreview = argsPreview.slice(0, 120) + "…";
+            toolMarkers.push(`🔧 **${tool}**(${argsPreview})`);
+            flushToMessage();
+            break;
+          }
+          case "tool-result": {
+            const tool = String(event.tool || "?");
+            const summary = String(event.summary || "");
+            const preview = summary.length > 120 ? summary.slice(0, 120) + "…" : summary;
+            toolMarkers.push(`↳ ${tool} → ${preview}`);
+            flushToMessage();
+            break;
+          }
+          case "tool-error":
+            toolMarkers.push(`⚠️ ${event.tool} 오류: ${event.message}`);
+            flushToMessage();
+            break;
+          case "done": {
+            const usage = (event.usage ?? {}) as { inputTokens?: number; outputTokens?: number };
+            const tokens = (usage.inputTokens || 0) + (usage.outputTokens || 0);
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === agentMsgId
+                  ? { ...m, tokens, toolCalls: [...toolCallNames] }
+                  : m,
+              ),
+            );
+            break;
+          }
+          case "error":
+            toolMarkers.push(`⚠️ ${event.message}`);
+            flushToMessage();
+            break;
+        }
+      }
+    }
+    return { handled: true };
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const query = input.trim();
@@ -146,6 +261,16 @@ export default function PlaygroundPage() {
     setLoading(true);
 
     try {
+      // Stream when an explicit agent is selected (router path stays on /api/agent/query).
+      if (agent) {
+        try {
+          const { handled } = await streamAgent(query, agent);
+          if (handled) return;
+        } catch {
+          // Fall through to non-streaming path.
+        }
+      }
+
       const res = await fetch("/api/agent/query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

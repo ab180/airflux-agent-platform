@@ -6,6 +6,7 @@ import { securityHeaders, requestId, bodyLimit, adminAuth, trustedUserContext } 
 import { serverTiming } from './middleware/timing.js';
 import { rateLimit } from './middleware/rate-limit.js';
 import { queryRoute } from './routes/query.js';
+import { queryStreamRoute } from './routes/query-stream.js';
 import { feedbackRoute } from './routes/feedback.js';
 import { adminRoutes } from './routes/admin.js';
 import { healthRoute } from './routes/health.js';
@@ -47,6 +48,9 @@ app.route('/api', healthRoute);
 
 // Agent query endpoint (user-facing)
 app.route('/api', queryRoute);
+
+// Streaming variant (Server-Sent Events, agent selection required)
+app.route('/api', queryStreamRoute);
 
 // Feedback endpoint (user-facing)
 app.use('/api/feedback', bodyLimit(10_000));

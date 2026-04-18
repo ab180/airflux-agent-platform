@@ -1,10 +1,16 @@
-import { generateText, stepCountIs } from 'ai';
+import { generateText, streamText, stepCountIs } from 'ai';
 import { BaseAgent, loadAgentInstructions } from '@airflux/core';
 import type { AgentContext, AgentResult, AgentConfig, AgentTool } from '@airflux/core';
 import { createModelAsync, createModelForProvider } from '../llm/model-factory.js';
 import { isClaudeCliAvailable, callClaudeCli } from '../llm/claude-cli-provider.js';
 import { isCodexCliAvailable, callCodexCli } from '../llm/codex-cli-provider.js';
 import { buildAdvisorToolDef, buildAdvisorSystemPrompt, extractAdvisorUsage, recordAdvisorCost } from '../llm/advisor.js';
+
+export interface AgentStreamResult {
+  fullStream: AsyncIterable<unknown>;
+  modelTier: string;
+  agentName: string;
+}
 
 export class AssistantAgent extends BaseAgent {
   constructor(config: AgentConfig, tools: Record<string, AgentTool>) {
@@ -100,6 +106,46 @@ export class AssistantAgent extends BaseAgent {
         metadata: { agent: this.name, durationMs },
       };
     }
+  }
+
+  /**
+   * Streaming variant of execute(). Returns the AI SDK streamText result so
+   * the HTTP route can pipe `fullStream` into SSE. Text + tool-call events
+   * surface incrementally for a token-by-token playground feel.
+   *
+   * Bypasses the CLI fallbacks — streaming requires the AI SDK path. If
+   * the model can't be built, the caller should fall back to execute().
+   */
+  async streamExecute(context: AgentContext): Promise<AgentStreamResult> {
+    const modelTier = (this.config.model as 'fast' | 'default' | 'powerful') || 'default';
+    const systemPrompt = this.buildSystemPrompt(context.sessionHistory);
+    const provider = this.config.provider || 'claude';
+    const model = await createModelForProvider(provider, modelTier);
+
+    const aiTools: Record<string, { description: string; parameters: unknown; execute: (input: unknown) => Promise<unknown> }> = {};
+    for (const [name, t] of Object.entries(this.tools)) {
+      aiTools[name] = {
+        description: t.description,
+        parameters: t.inputSchema,
+        execute: async (input: unknown) => t.execute(input),
+      };
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = streamText({
+      model,
+      system: systemPrompt,
+      prompt: context.question,
+      tools: aiTools as any,
+      stopWhen: stepCountIs(this.config.maxSteps || 5),
+      temperature: 0,
+    });
+
+    return {
+      fullStream: result.fullStream as AsyncIterable<unknown>,
+      modelTier,
+      agentName: this.name,
+    };
   }
 
   /**
