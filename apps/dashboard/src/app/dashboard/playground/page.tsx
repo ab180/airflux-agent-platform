@@ -381,23 +381,37 @@ export default function PlaygroundPage() {
       <div className="flex-1 overflow-y-auto py-4">
         {messages.length === 0 ? (
           <div className="flex h-full items-center justify-center">
-            <div className="text-center">
+            <div className="max-w-2xl text-center">
               <p className="text-[13px] text-muted-foreground">
-                에이전트에 질문을 입력하세요
+                에이전트에 질문을 입력하세요{agent ? " (스트리밍)" : " (자동 라우팅)"}
               </p>
-              <div className="mt-3 flex flex-wrap justify-center gap-2">
-                {["앱 123의 DAU 추이 분석해줘", "리텐션이 뭔지 설명해줘", "Airflux 에이전트 목록 보여줘"].map(
-                  (example) => (
-                    <button
-                      key={example}
-                      onClick={() => setInput(example)}
-                      className="rounded-md border border-border/50 px-3 py-1.5 text-[12px] text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
-                    >
-                      {example}
-                    </button>
-                  )
-                )}
+              <div className="mt-4 flex flex-wrap justify-center gap-2">
+                {[
+                  { label: "DAU 추이 (data-agent)", query: "지난주 앱별 DAU 추이 분석해줘", agent: "data-agent" },
+                  { label: "시간 표현 (data-agent)", query: "최근 3개월 앱별 리텐션 추이", agent: "data-agent" },
+                  { label: "용어 설명 (assistant-agent)", query: "ARPU와 LTV 차이 설명해줘", agent: "assistant-agent" },
+                  { label: "번역 (assistant-agent)", query: "번역: This quarter's retention hit record highs.", agent: "assistant-agent" },
+                  { label: "코드 리뷰 (research-agent)", query: "Auth 미들웨어 구조 설명해줘", agent: "research-agent" },
+                  { label: "일반 질문 (chief-agent)", query: "Airflux 플랫폼에서 뭘 할 수 있어?", agent: "chief-agent" },
+                ].map((example) => (
+                  <button
+                    key={example.label}
+                    onClick={() => {
+                      setInput(example.query);
+                      setAgent(example.agent);
+                      inputRef.current?.focus();
+                    }}
+                    className="rounded-md border border-border/50 px-3 py-1.5 text-[12px] text-muted-foreground transition-colors hover:border-primary/30 hover:text-foreground"
+                    title={example.query}
+                  >
+                    {example.label}
+                  </button>
+                ))}
               </div>
+              <p className="mt-3 text-[11px] text-muted-foreground/70">
+                위를 클릭하면 질문 + 담당 에이전트가 자동 선택됩니다.
+                에이전트를 고르면 응답이 토큰 단위로 스트리밍되어 나옵니다.
+              </p>
             </div>
           </div>
         ) : (
