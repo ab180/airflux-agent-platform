@@ -8,6 +8,7 @@ import {
   upsertUserMCPConnection,
 } from '../store/user-mcp-store.js';
 import { requireTrustedUserId } from '../security/trusted-user.js';
+import { logAudit } from '../store/audit-log.js';
 
 export const mcpRoutes = new Hono();
 
@@ -69,6 +70,14 @@ mcpRoutes.post('/mcp/connections', async (c) => {
   }
 
   upsertUserMCPConnection(userId, serverName, normalized);
+  logAudit({
+    userId,
+    action: 'mcp.connection.upsert',
+    resource: serverName,
+    outcome: 'success',
+    ip: c.req.header('x-forwarded-for') ?? c.req.header('x-real-ip') ?? undefined,
+    userAgent: c.req.header('user-agent') ?? undefined,
+  });
   return c.json({ success: true, userId, serverName });
 });
 
@@ -77,5 +86,13 @@ mcpRoutes.delete('/mcp/connections/:serverName', (c) => {
   if (!userId) return c.json({ success: false, error: 'Trusted user required' }, 401);
   const serverName = c.req.param('serverName');
   const deleted = deleteUserMCPConnection(userId, serverName);
+  logAudit({
+    userId,
+    action: 'mcp.connection.delete',
+    resource: serverName,
+    outcome: deleted ? 'success' : 'failure',
+    ip: c.req.header('x-forwarded-for') ?? c.req.header('x-real-ip') ?? undefined,
+    userAgent: c.req.header('user-agent') ?? undefined,
+  });
   return c.json({ success: deleted, userId, serverName });
 });

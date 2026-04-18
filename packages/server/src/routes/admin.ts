@@ -15,6 +15,7 @@ import { runEval } from '../eval/runner.js';
 import { getCostByUser } from '../llm/cost-tracker.js';
 import { getCostByUserPg, getCostEntriesForUserPg } from '../store/cost-store.js';
 import { isPostgresAvailable } from '../store/pg.js';
+import { logAudit, queryAudit } from '../store/audit-log.js';
 import { getDailyCostStats } from '../llm/cost-tracker.js';
 import { getSkillStats, getStalenessReport } from '../skills/skill-tracker.js';
 import { getExecutionStats, getStaleExecutions } from '../store/execution-state.js';
@@ -460,10 +461,39 @@ adminRoutes.post('/prompts/:agent/rollback', async (c) => {
 
   const result = rollbackPrompt(agent, b.versionId);
   if (!result) {
+    logAudit({
+      userId: (c.get('userId' as never) as string | undefined) ?? 'admin-key',
+      action: 'prompt.rollback',
+      resource: agent,
+      outcome: 'failure',
+      metadata: { versionId: b.versionId, reason: 'version-not-found' },
+    });
     return c.json({ success: false, error: 'Version not found' }, 404);
   }
 
+  logAudit({
+    userId: (c.get('userId' as never) as string | undefined) ?? 'admin-key',
+    action: 'prompt.rollback',
+    resource: agent,
+    outcome: 'success',
+    metadata: { versionId: b.versionId },
+  });
   return c.json({ success: true, prompt: result });
+});
+
+// ─── Audit log (admin) ──────────────────────────────────────────
+
+adminRoutes.get('/audit', (c) => {
+  const limit = Math.min(Number(c.req.query('limit')) || 50, 500);
+  const offset = Math.max(Number(c.req.query('offset')) || 0, 0);
+  const userId = c.req.query('userId') || undefined;
+  const action = c.req.query('action') || undefined;
+  const outcomeQ = c.req.query('outcome');
+  const outcome = outcomeQ === 'success' || outcomeQ === 'failure' ? outcomeQ : undefined;
+  const startDate = c.req.query('startDate') || undefined;
+  const endDate = c.req.query('endDate') || undefined;
+  const result = queryAudit({ limit, offset, userId, action, outcome, startDate, endDate });
+  return c.json(result);
 });
 
 // ─── Guardrails ───────────────────────────────────────────────────
