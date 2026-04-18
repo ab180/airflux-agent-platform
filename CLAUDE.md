@@ -123,6 +123,21 @@ settings/          — YAML (agents, skills, feature-flags, routing-rules)
 - 보안: 입력 검증, CORS, 보안 헤더, admin 인증, SSRF 방어, 코드 인젝션 방어, guardrails
 - 테스트 84개, 빌드 + 서버 + API 전체 동작 검증 완료
 
+## Local ↔ Production 전환
+
+모든 credential/storage/auth 분기는 `packages/server/src/runtime/environment.ts`
+단일 레이어를 경유한다. 새 기능을 추가할 때 아래 3가지 답이 없으면 머지 금지:
+
+1. 로컬 모드에서 어떻게 동작하는가?
+2. 프로덕션 모드에서 어떻게 동작하는가?
+3. 두 모드 사이의 스위치 지점은?
+
+**매트릭스**: `docs/local-vs-prod-matrix.md` — 기능별 로컬/프로덕션 동작 + 스위치 지점 표.
+**FROZEN 목록**: `docs/FROZEN.md` — 현재 동결된 기능과 해제 조건. 해제는 조건 증명 후에만.
+
+Direct `process.env.AWS_LAMBDA_FUNCTION_NAME` / `AGENT_API_URL` /
+`DATABASE_URL` 접근은 `environment.ts`에만. 다른 파일에서 이 env를 읽으면 안 됨.
+
 ## Git Workflow
 
 - git 작업은 사용자가 명시적으로 요청할 때만 수행

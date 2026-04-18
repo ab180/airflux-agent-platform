@@ -6,6 +6,11 @@ import type { ModelTier, ProviderName } from '@airflux/core';
 import { isClaudeCliAvailable } from './claude-cli-provider.js';
 import { isCodexCliAvailable } from './codex-cli-provider.js';
 import { logger } from '../lib/logger.js';
+import { getEnvironment, type CredentialStrategy } from '../runtime/environment.js';
+
+export function getModelCredentialSource(): CredentialStrategy {
+  return getEnvironment().credentialStrategy;
+}
 
 const TIER_MODELS: Record<ModelTier, string> = {
   fast: 'claude-haiku-4-5-20251001',
@@ -209,6 +214,22 @@ function makeOAuthModel(token: string, tier: ModelTier) {
 }
 
 export async function createModelAsync(tier: ModelTier = 'default'): Promise<ReturnType<ReturnType<typeof createAnthropic>>> {
+  // Production guard: if environment says bedrock/internal-api but no adapter
+  // is wired yet, fail loud instead of falling through to local credentials.
+  const strategy = getModelCredentialSource();
+  if (strategy === 'bedrock') {
+    throw new Error(
+      'Bedrock credential adapter not implemented (Phase 2). ' +
+      'Set AGENT_API_URL or deploy the Bedrock adapter before running in this mode.',
+    );
+  }
+  if (strategy === 'internal-api' && !process.env.AGENT_API_TOKEN) {
+    throw new Error(
+      'internal-api credential strategy requires AGENT_API_URL and AGENT_API_TOKEN. ' +
+      'AGENT_API_URL is set but AGENT_API_TOKEN is missing.',
+    );
+  }
+
   // 1. Try direct API key first
   try {
     const apiKey = getAnthropicApiKey();

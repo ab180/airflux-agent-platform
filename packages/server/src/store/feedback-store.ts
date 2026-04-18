@@ -1,4 +1,14 @@
 import { getDb } from './db.js';
+import { getEnvironment, type StorageStrategy } from '../runtime/environment.js';
+
+/**
+ * Which backend the feedback store currently uses.
+ * Routed through environment.ts. Implementation today is SQLite-only;
+ * helper exists so callers can see the environment's selection uniformly.
+ */
+export function getFeedbackStoreBackend(): StorageStrategy {
+  return getEnvironment().storageStrategy;
+}
 
 export interface Feedback {
   id: string;

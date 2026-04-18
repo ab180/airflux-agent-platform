@@ -6,6 +6,15 @@
 
 import { getPgPool, isPostgresAvailable } from './pg.js';
 import { randomUUID } from 'crypto';
+import { getEnvironment, type StorageStrategy } from '../runtime/environment.js';
+
+/**
+ * Which backend this store currently uses.
+ * Routed through environment.ts so mode switches live in one place.
+ */
+export function getConversationStoreBackend(): StorageStrategy {
+  return getEnvironment().storageStrategy;
+}
 
 export interface Conversation {
   id: string;

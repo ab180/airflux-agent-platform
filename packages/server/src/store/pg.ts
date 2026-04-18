@@ -9,13 +9,18 @@
 
 import pg from 'pg';
 import { logger } from '../lib/logger.js';
+import { getEnvironment } from '../runtime/environment.js';
 
 const { Pool } = pg;
 
 let pool: pg.Pool | null = null;
 
+/**
+ * Returns true when the environment selects the postgres storage strategy.
+ * Routes through runtime/environment.ts so mode switches live in one place.
+ */
 export function isPostgresAvailable(): boolean {
-  return !!process.env.DATABASE_URL;
+  return getEnvironment().storageStrategy === 'postgres';
 }
 
 export function getPgPool(): pg.Pool {
