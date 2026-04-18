@@ -27,13 +27,22 @@ export default function PromptsPage() {
 
   // Load agents list
   useEffect(() => {
+    const fromUrl =
+      typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("agent")
+        : null;
     fetchClient<{ agents: { name: string }[] }>("/api/admin/agents")
       .then(data => {
         const names = (data.agents || []).map(a => a.name);
         setAgents(names);
-        if (names.length > 0 && !selectedAgent) setSelectedAgent(names[0]);
+        if (fromUrl && names.includes(fromUrl)) {
+          setSelectedAgent(fromUrl);
+        } else if (names.length > 0 && !selectedAgent) {
+          setSelectedAgent(names[0]);
+        }
       })
       .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Load versions for selected agent
