@@ -67,6 +67,10 @@ export default function PlaygroundPage() {
   const [loading, setLoading] = useState(false);
   const [historyEnabled, setHistoryEnabled] = useState<boolean | null>(null);
   const [sessionId, setSessionId] = useState("");
+  const [understanding, setUnderstanding] = useState<{
+    timeRanges: Array<{ start?: string; end?: string; input?: string; [k: string]: unknown }>;
+    terms: Array<{ canonical?: string; key?: string; input?: string; [k: string]: unknown }>;
+  }>({ timeRanges: [], terms: [] });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -111,6 +115,37 @@ export default function PlaygroundPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Query understanding preview: Korean time + domain terms resolved
+  // server-side without hitting an LLM. Debounced to 250ms so typing feels
+  // live but we don't spam the endpoint.
+  useEffect(() => {
+    const trimmed = input.trim();
+    if (trimmed.length === 0) {
+      setUnderstanding({ timeRanges: [], terms: [] });
+      return;
+    }
+    const controller = new AbortController();
+    const t = setTimeout(() => {
+      fetch("/api/proxy/query/understand", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: trimmed }),
+        signal: controller.signal,
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data) setUnderstanding(data);
+        })
+        .catch(() => {
+          // Silent — the preview is nice-to-have, not critical.
+        });
+    }, 250);
+    return () => {
+      clearTimeout(t);
+      controller.abort();
+    };
+  }, [input]);
 
   async function resetConversation() {
     if (sessionId) {
@@ -521,6 +556,31 @@ export default function PlaygroundPage() {
           </div>
         )}
       </div>
+
+      {/* Understanding preview: Korean time + domain terms resolved locally */}
+      {(understanding.timeRanges.length > 0 || understanding.terms.length > 0) && (
+        <div className="flex flex-wrap gap-1.5 border-t border-border/30 pt-2 text-[11px]">
+          <span className="text-muted-foreground/70">이해:</span>
+          {understanding.timeRanges.map((r, i) => (
+            <span
+              key={`t-${i}`}
+              className="rounded-md border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-sky-300"
+              title={`원문: ${r.input ?? ""}`}
+            >
+              🕐 {r.input || "시간"} → {r.start}{r.end && r.end !== r.start ? ` ~ ${r.end}` : ""}
+            </span>
+          ))}
+          {understanding.terms.map((term, i) => (
+            <span
+              key={`g-${i}`}
+              className="rounded-md border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-violet-300"
+              title={String(term.description ?? "")}
+            >
+              📖 {term.input || term.key} → {term.canonical}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Input */}
       <form onSubmit={handleSubmit} className="border-t border-border/50 pt-3">
