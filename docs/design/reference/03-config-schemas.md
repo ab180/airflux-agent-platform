@@ -186,6 +186,11 @@ terms:
 
 ## 6. rbac.yaml
 
+> **PLANNED**: schema is aspirational. The in-code `rbac` middleware at
+> `packages/server/src/middleware/rbac.ts` exists but is driven by runtime
+> role, not YAML. A YAML-driven version is a follow-up once multi-tenant
+> requirements are concrete.
+
 역할 기반 접근 제어.
 
 ```yaml
@@ -209,6 +214,9 @@ users:
 
 ## 7. experiments.yaml
 
+> **ARCHIVED 2026-04-18**: no runner implementation, no YAML file in
+> `settings/`. Kept for historical reference.
+
 A/B 테스트 설정.
 
 ```yaml
@@ -228,6 +236,9 @@ A/B 테스트 설정.
 ---
 
 ## 8. monitors.yaml
+
+> **ARCHIVED 2026-04-18**: no alarm engine implementation. Kept for
+> historical reference.
 
 임계값 기반 자동 모니터링.
 
@@ -250,6 +261,9 @@ monitors:
 
 ## 9. cron-reports.yaml
 
+> **ARCHIVED 2026-04-18**: scheduler autonomous heartbeat is FROZEN (see
+> `docs/FROZEN.md`). Kept for historical reference.
+
 스케줄 리포트.
 
 ```yaml
@@ -267,6 +281,11 @@ monitors:
 ---
 
 ## 10. prompts/<agent>.yaml
+
+> **REPLACED 2026-04-18**: system prompts are now markdown files under
+> `settings/instructions/<agent>.md`. Version history lives in
+> `packages/server/src/store/prompt-store.ts` (SQLite, backed by the
+> `prompt_versions` table). The YAML design below is historical.
 
 프롬프트 버전 관리.
 
@@ -286,6 +305,9 @@ versions:
 
 ## 11. few-shots/<domain>.yaml
 
+> **ARCHIVED 2026-04-18**: no loader, no files under `settings/few-shots/`.
+> Few-shot examples today live inline in the agent instructions.
+
 검증된 few-shot 예시.
 
 ```yaml
@@ -302,6 +324,11 @@ examples:
 ---
 
 ## 12. rate-limits.yaml
+
+> **REPLACED 2026-04-18**: rate limiting is implemented in code at
+> `packages/server/src/middleware/rate-limit.ts` (in-memory sliding
+> window, applied per route in `app.ts`). A YAML-driven configuration is
+> not currently loaded.
 
 Rate limit + 동시성 제한. 상세: `architecture/12-rate-limiting.md`
 
@@ -324,6 +351,9 @@ global:
 
 ## 13. channel-app-mapping.yaml
 
+> **ARCHIVED 2026-04-18**: Slack multi-tenancy is deferred. The current
+> Slack route uses a single app context; this YAML has no loader.
+
 Slack 채널 → 앱 매핑. 상세: `architecture/11-multi-tenancy.md`
 
 ```yaml
@@ -337,6 +367,9 @@ channels:
 ---
 
 ## 14. app-access.yaml
+
+> **ARCHIVED 2026-04-18**: deferred to the future RBAC rework (see
+> `## 6. rbac.yaml` for the planned direction).
 
 사용자별 앱 접근 권한 (RBAC 확장).
 
