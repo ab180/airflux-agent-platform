@@ -129,6 +129,21 @@ export default function PlaygroundPage() {
     setMessages([]);
   }
 
+  function rerunFrom(msg: Message) {
+    // Find the user message immediately before this agent message and replay
+    // it with the currently-selected agent. Enables "same question, different
+    // prompt" and "same question, different agent" iteration loops.
+    const idx = messages.findIndex((m) => m.id === msg.id);
+    if (idx <= 0) return;
+    for (let i = idx - 1; i >= 0; i--) {
+      if (messages[i].role === "user") {
+        setInput(messages[i].text);
+        inputRef.current?.focus();
+        return;
+      }
+    }
+  }
+
   async function streamAgent(
     query: string,
     agentName: string,
@@ -448,6 +463,20 @@ export default function PlaygroundPage() {
                           {msg.tokens} tokens
                         </span>
                       )}
+                      {typeof msg.steps === "number" && msg.steps > 0 && (
+                        <span className="font-mono text-[10px] text-muted-foreground">
+                          {msg.steps} steps
+                        </span>
+                      )}
+                      <button
+                        onClick={() => rerunFrom(msg)}
+                        disabled={loading}
+                        className="ml-auto rounded px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary disabled:opacity-50"
+                        title="이 답변의 질문을 현재 선택된 에이전트로 재실행"
+                        aria-label="재실행"
+                      >
+                        ↺ 재실행
+                      </button>
                     </div>
                   )}
                   {msg.role === "agent" ? (
