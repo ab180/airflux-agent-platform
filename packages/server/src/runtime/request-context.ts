@@ -19,3 +19,16 @@ export function runWithRequestContext<T>(
 export function getRequestContext(): RuntimeRequestContext | undefined {
   return storage.getStore();
 }
+
+/**
+ * Asserts a userId is present in the current request context.
+ * Use at the top of any operation that must be attributed to a real user
+ * (per-user storage reads, cost tracking, audit logging).
+ */
+export function requireUserId(): string {
+  const ctx = storage.getStore();
+  if (!ctx || !ctx.userId) {
+    throw new Error('requireUserId: no userId in current request context');
+  }
+  return ctx.userId;
+}
