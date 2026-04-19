@@ -1,9 +1,17 @@
-import { generateText, stepCountIs } from 'ai';
-import { BaseAgent, loadAgentInstructions } from '@airflux/core';
+import { generateText, streamText, stepCountIs } from 'ai';
+import { BaseAgent } from '@airflux/core';
 import type { AgentContext, AgentResult, AgentConfig, AgentTool } from '@airflux/core';
-import { createModel } from '../llm/model-factory.js';
+import { getAgentInstructions } from './instructions.js';
+import { createModelAsync, createModelForProvider } from '../llm/model-factory.js';
 import { isClaudeCliAvailable, callClaudeCli } from '../llm/claude-cli-provider.js';
+import { isCodexCliAvailable, callCodexCli } from '../llm/codex-cli-provider.js';
 import { buildAdvisorToolDef, buildAdvisorSystemPrompt, extractAdvisorUsage, recordAdvisorCost } from '../llm/advisor.js';
+
+export interface AgentStreamResult {
+  fullStream: AsyncIterable<unknown>;
+  modelTier: string;
+  agentName: string;
+}
 
 export class AssistantAgent extends BaseAgent {
   constructor(config: AgentConfig, tools: Record<string, AgentTool>) {
@@ -17,19 +25,23 @@ export class AssistantAgent extends BaseAgent {
     try {
       const systemPrompt = this.buildSystemPrompt(context.sessionHistory);
 
-      // Try AI SDK first, fallback to Claude CLI
+      // Try AI SDK with provider selection, fallback to CLI
+      const provider = this.config.provider || 'claude';
       let model;
       try {
-        model = createModel(modelTier);
+        model = await createModelForProvider(provider, modelTier);
       } catch {
-        // No API key — try Claude CLI fallback
-        if (isClaudeCliAvailable()) {
-          return this.executeViaCli(context, systemPrompt, startTime);
+        // SDK unavailable — try CLI fallback
+        if (provider === 'openai' && isCodexCliAvailable()) {
+          return this.executeViaCli(context, systemPrompt, startTime, 'codex');
         }
-        throw new Error('No LLM available. Set ANTHROPIC_API_KEY or run `claude login`.');
+        if (isClaudeCliAvailable()) {
+          return this.executeViaCli(context, systemPrompt, startTime, 'claude');
+        }
+        throw new Error('No LLM available. Set API key or run `claude login` / `codex login`.');
       }
 
-      // Convert registered tools to AI SDK tool format (plain objects)
+      // Convert registered tools to AI SDK tool format
       const aiTools: Record<string, { description: string; parameters: unknown; execute: (input: unknown) => Promise<unknown> }> = {};
       for (const [name, t] of Object.entries(this.tools)) {
         aiTools[name] = {
@@ -46,7 +58,8 @@ export class AssistantAgent extends BaseAgent {
         prompt: context.question,
         tools: aiTools as any,
         stopWhen: stepCountIs(this.config.maxSteps || 5),
-        temperature: this.config.temperature ?? 0,
+        // Extended thinking requires temperature: 1 (Anthropic constraint)
+        temperature: 0,
       });
 
       const durationMs = Math.round(performance.now() - startTime);
@@ -62,6 +75,9 @@ export class AssistantAgent extends BaseAgent {
         }
       }
 
+      // Extract reasoning text from extended thinking (undefined in CLI/non-thinking mode)
+      const thinking = (result as unknown as { reasoningText?: string }).reasoningText || undefined;
+
       return {
         success: true,
         text: result.text,
@@ -73,6 +89,7 @@ export class AssistantAgent extends BaseAgent {
           toolCalls: result.steps.flatMap(s => s.toolCalls || []).map(tc => tc.toolName),
           advisorCalls,
           advisorModel: this.config.advisor?.model || null,
+          thinking,
           usage: {
             inputTokens: (result.usage as unknown as Record<string, number>).promptTokens ?? result.usage.inputTokens ?? 0,
             outputTokens: (result.usage as unknown as Record<string, number>).completionTokens ?? result.usage.outputTokens ?? 0,
@@ -93,19 +110,69 @@ export class AssistantAgent extends BaseAgent {
   }
 
   /**
-   * Fallback: execute via `claude --print` CLI when no API key is available.
-   * Uses the user's Claude Code subscription. No tool calling — text only.
+   * Streaming variant of execute(). Returns the AI SDK streamText result so
+   * the HTTP route can pipe `fullStream` into SSE. Text + tool-call events
+   * surface incrementally for a token-by-token playground feel.
+   *
+   * Bypasses the CLI fallbacks — streaming requires the AI SDK path. If
+   * the model can't be built, the caller should fall back to execute().
    */
-  private executeViaCli(context: AgentContext, systemPrompt: string, startTime: number): AgentResult {
-    const TIER_TO_MODEL: Record<string, string> = {
-      fast: 'claude-haiku-4-5',
-      default: 'claude-sonnet-4-6',
-      powerful: 'claude-opus-4-6',
-    };
-    const modelTier = (this.config.model as string) || 'default';
-    const cliModel = TIER_TO_MODEL[modelTier] || TIER_TO_MODEL['default'];
+  async streamExecute(context: AgentContext): Promise<AgentStreamResult> {
+    const modelTier = (this.config.model as 'fast' | 'default' | 'powerful') || 'default';
+    const systemPrompt = this.buildSystemPrompt(context.sessionHistory);
+    const provider = this.config.provider || 'claude';
+    const model = await createModelForProvider(provider, modelTier);
 
-    const text = callClaudeCli(context.question, systemPrompt, cliModel);
+    const aiTools: Record<string, { description: string; parameters: unknown; execute: (input: unknown) => Promise<unknown> }> = {};
+    for (const [name, t] of Object.entries(this.tools)) {
+      aiTools[name] = {
+        description: t.description,
+        parameters: t.inputSchema,
+        execute: async (input: unknown) => t.execute(input),
+      };
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result = streamText({
+      model,
+      system: systemPrompt,
+      prompt: context.question,
+      tools: aiTools as any,
+      stopWhen: stepCountIs(this.config.maxSteps || 5),
+      temperature: 0,
+    });
+
+    return {
+      fullStream: result.fullStream as AsyncIterable<unknown>,
+      modelTier,
+      agentName: this.name,
+    };
+  }
+
+  /**
+   * Fallback: execute via CLI when no API key is available.
+   * Supports both Claude CLI and Codex CLI. No tool calling — text only.
+   */
+  private executeViaCli(
+    context: AgentContext,
+    systemPrompt: string,
+    startTime: number,
+    backend: 'claude' | 'codex' = 'claude',
+  ): AgentResult {
+    const modelTier = (this.config.model as string) || 'default';
+    let text: string;
+    let providerName: string;
+
+    if (backend === 'codex') {
+      const CODEX_MODELS: Record<string, string> = { fast: 'gpt-4.1-mini', default: 'gpt-5.4', powerful: 'o3' };
+      text = callCodexCli(context.question, systemPrompt, CODEX_MODELS[modelTier] || 'gpt-5.4');
+      providerName = 'codex-cli';
+    } else {
+      const CLAUDE_MODELS: Record<string, string> = { fast: 'claude-haiku-4-5', default: 'claude-sonnet-4-6', powerful: 'claude-opus-4-6' };
+      text = callClaudeCli(context.question, systemPrompt, CLAUDE_MODELS[modelTier] || 'claude-sonnet-4-6');
+      providerName = 'claude-cli';
+    }
+
     const durationMs = Math.round(performance.now() - startTime);
 
     return {
@@ -114,7 +181,7 @@ export class AssistantAgent extends BaseAgent {
       metadata: {
         agent: this.name,
         model: modelTier,
-        provider: 'claude-cli',
+        provider: providerName,
         durationMs,
         steps: 0,
         toolCalls: [],
@@ -124,8 +191,8 @@ export class AssistantAgent extends BaseAgent {
   }
 
   private buildSystemPrompt(sessionHistory?: string): string {
-    // Load freeform instructions from settings/instructions/{agent-name}.md
-    const instructions = loadAgentInstructions(this.name);
+    // DB prompt_versions (current) → filesystem instructions/{agent-name}.md fallback.
+    const instructions = getAgentInstructions(this.name);
 
     // GSD-2 pattern: structured context injection with tool metadata
     const toolDescriptions = Object.entries(this.tools)

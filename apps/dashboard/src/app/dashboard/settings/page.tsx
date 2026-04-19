@@ -1,6 +1,9 @@
 import { Badge } from "@/components/ui/badge";
 import { LLMSetup } from "@/components/dashboard/llm-setup";
+import { MCPSettings } from "@/components/dashboard/mcp-settings";
 import { fetchAPISafe } from "@/lib/api";
+import { authConfig, isTeamMode } from "@/lib/auth";
+import { getServerSession } from "next-auth";
 
 interface GuardrailInfo {
   name: string;
@@ -15,6 +18,8 @@ interface RoutingRule {
 }
 
 export default async function SettingsPage() {
+  const session = isTeamMode ? await getServerSession(authConfig) : null;
+  const viewerUserId = session?.user?.email || "local-admin";
   const [{ guardrails }, routingConfig, { agents }] = await Promise.all([
     fetchAPISafe<{ guardrails: GuardrailInfo[] }>("/api/admin/guardrails", { guardrails: [] }),
     fetchAPISafe<{ rules: RoutingRule[]; fallback: string }>("/api/admin/routing", { rules: [], fallback: "echo-agent" }),
@@ -40,6 +45,16 @@ export default async function SettingsPage() {
         <div className="rounded-lg border border-border/50 px-4 py-3">
           <LLMSetup />
         </div>
+      </section>
+
+      <section className="space-y-3" aria-label="MCP 연결">
+        <h2 className="text-[13px] font-semibold uppercase tracking-wider text-muted-foreground">
+          MCP 연결
+        </h2>
+        <p className="text-[12px] text-muted-foreground">
+          `ab180/agent` 패턴처럼 서버 정의는 플랫폼이 관리하고, 개인 토큰은 사용자 단위로 붙입니다. `settings/mcp-servers.yaml`의 `agents` 필드에 적은 에이전트는 연결된 `mcp_*` 도구를 자동으로 받습니다. 현재 사용자 ID: <span className="font-mono text-foreground/70">{viewerUserId}</span>
+        </p>
+        <MCPSettings />
       </section>
 
       {/* Advisor configuration */}
@@ -169,6 +184,7 @@ export default async function SettingsPage() {
           <InfoRow label="settings/agents.yaml" value="에이전트 등록/설정" mono />
           <InfoRow label="settings/skills.yaml" value="스킬 정의 (도구 조합 + guardrail)" mono />
           <InfoRow label="settings/routing-rules.yaml" value="에이전트 라우팅 규칙" mono />
+          <InfoRow label="settings/mcp-servers.yaml" value="MCP 서버 정의 + 개인 인증 필드" mono />
           <InfoRow label="settings/feature-flags.yaml" value="기능 플래그" mono />
         </div>
       </section>

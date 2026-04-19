@@ -1,6 +1,12 @@
 import { createMiddleware } from 'hono/factory';
 import type { Context, Next } from 'hono';
 import { timingSafeEqual } from 'crypto';
+import { verifyTrustedUserHeadersFull } from '../security/trusted-user.js';
+import { logAudit } from '../store/audit-log.js';
+
+function clientIp(c: Context): string | undefined {
+  return c.req.header('x-forwarded-for') ?? c.req.header('x-real-ip') ?? undefined;
+}
 
 /**
  * Security headers middleware.
@@ -47,17 +53,47 @@ function safeCompare(a: string, b: string): boolean {
 }
 
 /**
+ * Populate userId + role from a trusted-user HMAC if present.
+ * Never rejects — downstream middleware decides policy. Safe to apply broadly.
+ */
+export const trustedUserContext = createMiddleware(async (c: Context, next: Next) => {
+  const identity = verifyTrustedUserHeadersFull(new Headers(c.req.raw.headers));
+  if (identity) {
+    c.set('userId', identity.userId);
+    if (identity.role) c.set('role', identity.role);
+  }
+  await next();
+});
+
+/**
  * Admin auth guard.
- * In Phase 0, uses a simple API key from env. Later: SSO/JWT.
+ * Accepts either:
+ *   1. ADMIN_API_KEY shared secret (legacy / machine-to-machine), OR
+ *   2. Trusted-user HMAC with role='admin' (dashboard-signed per-user).
+ * Sets c.set('role', 'admin') on success so downstream rbac middlewares agree.
+ * Phase 2: replace with SSO/JWT.
  */
 export const adminAuth = createMiddleware(async (c: Context, next: Next) => {
   const adminKey = process.env.ADMIN_API_KEY;
+  const ip = clientIp(c);
+  const userAgent = c.req.header('user-agent') ?? undefined;
+  const resource = c.req.path;
 
-  // If no key configured, allow access in development
+  // If no key configured, allow access in development.
   if (!adminKey) {
     if (process.env.NODE_ENV === 'production') {
+      logAudit({
+        userId: 'unknown',
+        action: 'admin.auth',
+        resource,
+        outcome: 'failure',
+        ip,
+        userAgent,
+        metadata: { reason: 'no-admin-key-configured' },
+      });
       return c.json({ success: false, error: 'Admin API key not configured' }, 500);
     }
+    c.set('role', 'admin');
     await next();
     return;
   }
@@ -67,9 +103,47 @@ export const adminAuth = createMiddleware(async (c: Context, next: Next) => {
     ? authHeader.slice(7)
     : c.req.header('x-admin-key');
 
-  if (!providedKey || !safeCompare(providedKey, adminKey)) {
-    return c.json({ success: false, error: 'Unauthorized' }, 401);
+  if (providedKey && safeCompare(providedKey, adminKey)) {
+    c.set('role', 'admin');
+    logAudit({
+      userId: 'admin-key',
+      action: 'admin.auth',
+      resource,
+      outcome: 'success',
+      ip,
+      userAgent,
+      metadata: { via: 'admin-api-key' },
+    });
+    await next();
+    return;
   }
 
-  await next();
+  // Fallback: trusted-user with admin role (dashboard-signed).
+  const identity = verifyTrustedUserHeadersFull(new Headers(c.req.raw.headers));
+  if (identity?.role === 'admin') {
+    c.set('userId', identity.userId);
+    c.set('role', 'admin');
+    logAudit({
+      userId: identity.userId,
+      action: 'admin.auth',
+      resource,
+      outcome: 'success',
+      ip,
+      userAgent,
+      metadata: { via: 'trusted-user-admin' },
+    });
+    await next();
+    return;
+  }
+
+  logAudit({
+    userId: identity?.userId ?? 'anonymous',
+    action: 'admin.auth',
+    resource,
+    outcome: 'failure',
+    ip,
+    userAgent,
+    metadata: { providedKey: !!providedKey, identityRole: identity?.role ?? null },
+  });
+  return c.json({ success: false, error: 'Unauthorized' }, 401);
 });

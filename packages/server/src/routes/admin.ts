@@ -5,13 +5,17 @@ import {
 } from '@airflux/core';
 import type { SkillDefinition } from '@airflux/core';
 import { queryLogs, getLogStats, getAgentStats, getDetailedMetrics } from '../store/log-store.js';
-import { getGoldenDataset, addTestCase, getEvalRuns, saveEvalRun, seedDefaultTestCases } from '../store/eval-store.js';
-import type { EvalResult } from '../store/eval-store.js';
+import { getGoldenDataset, addTestCase, getEvalRuns, seedDefaultTestCases } from '../store/eval-store.js';
 import { queryFeedback, getFeedbackStats, getFeedbackDetail } from '../store/feedback-store.js';
 import { getDbHealth, cleanupDb } from '../store/db-health.js';
 import { refreshDailyStats, getDailyStats } from '../store/log-aggregator.js';
 import { getFeatureFlags } from '../bootstrap.js';
 import { isLLMAvailable, getLLMStatus, setApiKey, clearApiKeyCache } from '../llm/model-factory.js';
+import { runEval } from '../eval/runner.js';
+import { getCostByUser } from '../llm/cost-tracker.js';
+import { getCostByUserPg, getCostEntriesForUserPg } from '../store/cost-store.js';
+import { isPostgresAvailable } from '../store/pg.js';
+import { logAudit, queryAudit } from '../store/audit-log.js';
 import { getDailyCostStats } from '../llm/cost-tracker.js';
 import { getSkillStats, getStalenessReport } from '../skills/skill-tracker.js';
 import { getExecutionStats, getStaleExecutions } from '../store/execution-state.js';
@@ -457,10 +461,39 @@ adminRoutes.post('/prompts/:agent/rollback', async (c) => {
 
   const result = rollbackPrompt(agent, b.versionId);
   if (!result) {
+    logAudit({
+      userId: (c.get('userId' as never) as string | undefined) ?? 'admin-key',
+      action: 'prompt.rollback',
+      resource: agent,
+      outcome: 'failure',
+      metadata: { versionId: b.versionId, reason: 'version-not-found' },
+    });
     return c.json({ success: false, error: 'Version not found' }, 404);
   }
 
+  logAudit({
+    userId: (c.get('userId' as never) as string | undefined) ?? 'admin-key',
+    action: 'prompt.rollback',
+    resource: agent,
+    outcome: 'success',
+    metadata: { versionId: b.versionId },
+  });
   return c.json({ success: true, prompt: result });
+});
+
+// ─── Audit log (admin) ──────────────────────────────────────────
+
+adminRoutes.get('/audit', (c) => {
+  const limit = Math.min(Number(c.req.query('limit')) || 50, 500);
+  const offset = Math.max(Number(c.req.query('offset')) || 0, 0);
+  const userId = c.req.query('userId') || undefined;
+  const action = c.req.query('action') || undefined;
+  const outcomeQ = c.req.query('outcome');
+  const outcome = outcomeQ === 'success' || outcomeQ === 'failure' ? outcomeQ : undefined;
+  const startDate = c.req.query('startDate') || undefined;
+  const endDate = c.req.query('endDate') || undefined;
+  const result = queryAudit({ limit, offset, userId, action, outcome, startDate, endDate });
+  return c.json(result);
 });
 
 // ─── Guardrails ───────────────────────────────────────────────────
@@ -514,89 +547,18 @@ adminRoutes.post('/eval/dataset', async (c) => {
 });
 
 adminRoutes.post('/eval/run', async (c) => {
-  seedDefaultTestCases();
-  const dataset = getGoldenDataset();
-  if (dataset.length === 0) {
-    return c.json({ success: false, error: 'No test cases in golden dataset' }, 400);
+  // Explicit opt-in for LLM judge on rubric-only cases. Default off because
+  // judge hits the LLM per case (cost + latency). Manual runs that need
+  // qualitative scoring pass ?useJudge=true.
+  const useJudge = c.req.query('useJudge') === 'true';
+
+  try {
+    const run = await runEval({ useJudge });
+    return c.json({ success: true, run });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return c.json({ success: false, error: msg }, 400);
   }
-
-  const results: EvalResult[] = [];
-  const { getRouter } = await import('../bootstrap.js');
-
-  for (const tc of dataset) {
-    const startTime = performance.now();
-    try {
-      const routed = getRouter().route(tc.question);
-      const agent = AgentRegistry.getOptional(routed.agent);
-      const agentName = routed.agent;
-      let response = '';
-
-      if (agent && agent.isEnabled()) {
-        const { HttpResponseChannel } = await import('@airflux/core');
-        const channel = new HttpResponseChannel();
-        const result = await AgentRegistry.execute(agentName, {
-          question: tc.question,
-          userId: 'eval-system',
-          sessionId: `eval-${Date.now()}`,
-          source: 'api' as const,
-          responseChannel: channel,
-          metadata: {},
-        });
-        response = result.text || result.error || '';
-      }
-
-      const durationMs = Math.round(performance.now() - startTime);
-
-      // Check pass conditions
-      let passed = true;
-      let reason = 'OK';
-
-      if (tc.expectedAgent && tc.expectedAgent !== agentName) {
-        passed = false;
-        reason = `Expected agent ${tc.expectedAgent}, got ${agentName}`;
-      } else if (tc.expectedContains && !response.toLowerCase().includes(tc.expectedContains.toLowerCase())) {
-        passed = false;
-        reason = `Response missing expected text: "${tc.expectedContains}"`;
-      }
-
-      results.push({
-        caseId: tc.id,
-        question: tc.question,
-        expectedAgent: tc.expectedAgent,
-        actualAgent: agentName,
-        expectedContains: tc.expectedContains,
-        actualResponse: response.slice(0, 300),
-        passed,
-        reason,
-        durationMs,
-      });
-    } catch (e) {
-      results.push({
-        caseId: tc.id,
-        question: tc.question,
-        actualAgent: 'error',
-        actualResponse: '',
-        passed: false,
-        reason: `Error: ${e instanceof Error ? e.message : 'unknown'}`,
-        durationMs: Math.round(performance.now() - startTime),
-      });
-    }
-  }
-
-  const passed = results.filter(r => r.passed).length;
-  const failed = results.filter(r => !r.passed).length;
-  const score = results.length > 0 ? Number(((passed / results.length) * 100).toFixed(1)) : 0;
-
-  const run = saveEvalRun({
-    timestamp: new Date().toISOString(),
-    totalCases: results.length,
-    passed,
-    failed,
-    score,
-    results,
-  });
-
-  return c.json({ success: true, run });
 });
 
 adminRoutes.get('/eval/runs', (c) => {
@@ -726,6 +688,33 @@ adminRoutes.get('/cost', (c) => {
       powerful: { input: 15.00, output: 75.00, unit: 'per 1M tokens' },
     },
   });
+});
+
+// Per-user cost breakdown. Prefers Postgres (longer history, persistent)
+// and falls back to the in-memory tracker when DATABASE_URL is unset.
+adminRoutes.get('/cost/by-user', async (c) => {
+  const days = Math.min(Number(c.req.query('days')) || 7, 90);
+  if (isPostgresAvailable()) {
+    const users = await getCostByUserPg(days);
+    return c.json({ source: 'postgres', days, users });
+  }
+  const users = getCostByUser();
+  return c.json({ source: 'in-memory', days: 1, users });
+});
+
+adminRoutes.get('/cost/by-user/:userId', async (c) => {
+  const userId = c.req.param('userId');
+  if (!isPostgresAvailable()) {
+    return c.json({
+      source: 'in-memory',
+      userId,
+      entries: [],
+      note: 'Per-entry history requires DATABASE_URL (Postgres). In-memory tracker only aggregates totals.',
+    });
+  }
+  const limit = Math.min(Number(c.req.query('limit')) || 50, 500);
+  const entries = await getCostEntriesForUserPg(userId, limit);
+  return c.json({ source: 'postgres', userId, entries });
 });
 
 // ─── LLM Configuration ──────────────────────────────────────────

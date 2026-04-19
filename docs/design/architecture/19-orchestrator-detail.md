@@ -1,5 +1,20 @@
 # Orchestrator Execution Model
 
+> **STATUS (2026-04-18): DEFERRED**
+>
+> 이 문서는 현재 코드에 없는 `Orchestrator` 클래스 설계안입니다. 현행 실행 경로는
+> `packages/server/src/routes/query.ts`의 단일 에이전트 디스패처이며, 모든
+> 프로덕션 유스케이스가 이것으로 충족됩니다. `Inter-agent message bus`
+> (`docs/FROZEN.md`) 해제가 선행 조건입니다.
+>
+> **해제 조건**: 한 에이전트의 출력이 다른 에이전트로 조건부 라우팅되고
+> retry/recovery 의미가 필요한 실제 사용자 스토리가 문서화될 때.
+>
+> **그 전까지**: 이 문서는 설계안이지 출시 코드가 아닙니다. 다른 문서에서
+> `Orchestrator`를 실재하는 것처럼 참조하지 마세요.
+
+---
+
 > 에이전트 간 공유 컨텍스트, 실행 전략, 병렬/순차 결정, 타임아웃
 
 ## 1. WorkingMemory — 에이전트 간 공유 상태

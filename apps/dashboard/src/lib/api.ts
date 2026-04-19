@@ -1,8 +1,28 @@
 import { API_BASE } from "./config";
 
+// In Docker, SSR runs inside the dashboard container where localhost:3000 is unreachable.
+// API_URL (no NEXT_PUBLIC_ prefix) is only available server-side and points to the
+// internal Docker service name (e.g. http://server:3000).
+const SERVER_API_BASE =
+  typeof window === "undefined"
+    ? (process.env.API_URL ?? API_BASE)
+    : API_BASE;
+
+// Server-side SSR can read ADMIN_API_KEY (non-public) at runtime.
+const SSR_ADMIN_KEY =
+  typeof window === "undefined"
+    ? (process.env.ADMIN_API_KEY ?? "airflux-local")
+    : "airflux-local";
+
+function adminHeaders(path: string): HeadersInit {
+  if (!path.includes("/api/admin/")) return {};
+  return { "x-admin-key": SSR_ADMIN_KEY };
+}
+
 export async function fetchAPI<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${SERVER_API_BASE}${path}`, {
     cache: "no-store",
+    headers: adminHeaders(path),
   });
   if (!res.ok) throw new Error(`API ${path}: ${res.status}`);
   return res.json() as Promise<T>;

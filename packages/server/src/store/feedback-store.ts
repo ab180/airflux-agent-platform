@@ -1,4 +1,14 @@
 import { getDb } from './db.js';
+import { getEnvironment, type StorageStrategy } from '../runtime/environment.js';
+
+/**
+ * Which backend the feedback store currently uses.
+ * Routed through environment.ts. Implementation today is SQLite-only;
+ * helper exists so callers can see the environment's selection uniformly.
+ */
+export function getFeedbackStoreBackend(): StorageStrategy {
+  return getEnvironment().storageStrategy;
+}
 
 export interface Feedback {
   id: string;
@@ -77,6 +87,7 @@ export function queryFeedback(opts: {
   rating?: string;
   startDate?: string;
   endDate?: string;
+  userId?: string;
 } = {}): { feedback: Feedback[]; total: number } {
   ensureTables();
   const limit = opts.limit || 50;
@@ -99,6 +110,10 @@ export function queryFeedback(opts: {
   if (opts.endDate) {
     conditions.push('timestamp <= ?');
     params.push(opts.endDate);
+  }
+  if (opts.userId) {
+    conditions.push('user_id = ?');
+    params.push(opts.userId);
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';

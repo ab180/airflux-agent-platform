@@ -58,6 +58,20 @@ describe('GET /api/health', () => {
   });
 });
 
+// ─── Conversations ───────────────────────────────────────────────
+
+describe('Conversation routes', () => {
+  it('rejects conversation list without trusted user header', async () => {
+    const res = await app.request('/api/conversations');
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects conversation messages without trusted user header', async () => {
+    const res = await app.request('/api/conversations/test/messages');
+    expect(res.status).toBe(401);
+  });
+});
+
 // ─── Query ────────────────────────────────────────────────────────
 
 describe('POST /api/query', () => {

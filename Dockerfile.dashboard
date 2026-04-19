@@ -1,0 +1,31 @@
+FROM node:24-slim AS base
+WORKDIR /app
+
+# Install dependencies (workspace-aware)
+COPY package.json package-lock.json turbo.json tsconfig.base.json ./
+COPY packages/core/package.json packages/core/
+COPY packages/server/package.json packages/server/
+COPY apps/dashboard/package.json apps/dashboard/
+RUN npm ci --ignore-scripts
+
+# Build dashboard
+COPY packages/core/ packages/core/
+COPY apps/dashboard/ apps/dashboard/
+ENV NEXT_TELEMETRY_DISABLED=1
+ARG NEXT_PUBLIC_ADMIN_API_KEY=airflux-local
+ENV NEXT_PUBLIC_ADMIN_API_KEY=$NEXT_PUBLIC_ADMIN_API_KEY
+RUN npx turbo build --filter=dashboard
+
+# Production
+FROM node:24-slim
+WORKDIR /app
+ENV NODE_ENV=production
+ENV PORT=3001
+ENV NEXT_TELEMETRY_DISABLED=1
+
+COPY --from=base /app/node_modules ./node_modules
+COPY --from=base /app/apps/dashboard ./apps/dashboard
+
+EXPOSE 3001
+WORKDIR /app/apps/dashboard
+CMD ["/app/node_modules/.bin/next", "start", "--port", "3001"]

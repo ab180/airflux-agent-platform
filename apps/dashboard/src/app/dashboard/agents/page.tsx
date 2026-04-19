@@ -112,6 +112,16 @@ function AgentCard({ agent }: { agent: AgentInfo }) {
       </div>
 
       <div className="mt-3 flex items-center gap-2 border-t border-border/30 pt-3">
+        <Link href={`/dashboard/playground?agent=${agent.name}`}>
+          <Button size="sm" className="h-7 text-[11px]">
+            플레이그라운드
+          </Button>
+        </Link>
+        <Link href={`/dashboard/prompts?agent=${agent.name}`}>
+          <Button variant="ghost" size="sm" className="h-7 text-[11px]">
+            프롬프트
+          </Button>
+        </Link>
         <Link href={`/dashboard/agents/${agent.name}`}>
           <Button variant="ghost" size="sm" className="h-7 text-[11px]">
             설정

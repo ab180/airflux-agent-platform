@@ -9,13 +9,18 @@
 
 import pg from 'pg';
 import { logger } from '../lib/logger.js';
+import { getEnvironment } from '../runtime/environment.js';
 
 const { Pool } = pg;
 
 let pool: pg.Pool | null = null;
 
+/**
+ * Returns true when the environment selects the postgres storage strategy.
+ * Routes through runtime/environment.ts so mode switches live in one place.
+ */
 export function isPostgresAvailable(): boolean {
-  return !!process.env.DATABASE_URL;
+  return getEnvironment().storageStrategy === 'postgres';
 }
 
 export function getPgPool(): pg.Pool {
@@ -79,13 +84,39 @@ export async function initPgTables(): Promise<void> {
       input_tokens INTEGER NOT NULL DEFAULT 0,
       output_tokens INTEGER NOT NULL DEFAULT 0,
       cost_usd NUMERIC(10, 6) NOT NULL DEFAULT 0,
-      duration_ms INTEGER NOT NULL DEFAULT 0
+      duration_ms INTEGER NOT NULL DEFAULT 0,
+      user_id TEXT NOT NULL DEFAULT 'system'
     );
+
+    -- Migration: add user_id column to existing cost_entries tables.
+    ALTER TABLE cost_entries
+      ADD COLUMN IF NOT EXISTS user_id TEXT NOT NULL DEFAULT 'system';
 
     CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_cost_timestamp ON cost_entries(timestamp DESC);
     CREATE INDEX IF NOT EXISTS idx_cost_agent ON cost_entries(agent, timestamp DESC);
+    CREATE INDEX IF NOT EXISTS idx_cost_user ON cost_entries(user_id, timestamp DESC);
     CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_id, updated_at DESC);
+
+    -- Inter-agent message bus (Living Company pattern)
+    CREATE TABLE IF NOT EXISTS agent_messages (
+      id TEXT PRIMARY KEY,
+      from_agent TEXT NOT NULL,
+      to_agent TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'request',
+      priority TEXT NOT NULL DEFAULT 'normal',
+      subject TEXT NOT NULL,
+      body TEXT NOT NULL,
+      metadata JSONB DEFAULT '{}',
+      parent_id TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      processed_at TIMESTAMPTZ
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_agent_msg_to ON agent_messages(to_agent, status, created_at);
+    CREATE INDEX IF NOT EXISTS idx_agent_msg_from ON agent_messages(from_agent, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_agent_msg_parent ON agent_messages(parent_id);
   `);
 
   logger.info('PostgreSQL tables initialized');

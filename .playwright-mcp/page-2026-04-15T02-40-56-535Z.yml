@@ -1,0 +1,71 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - link "메인 콘텐츠로 건너뛰기" [ref=e3] [cursor=pointer]:
+      - /url: "#main-content"
+    - complementary "사이드바 네비게이션" [ref=e4]:
+      - generic [ref=e5]:
+        - generic [ref=e7]: A
+        - generic [ref=e8]: Airfluxv0.1
+      - navigation "대시보드 메뉴" [ref=e9]:
+        - generic [ref=e10]: 플랫폼
+        - link "현황" [ref=e11] [cursor=pointer]:
+          - /url: /dashboard
+          - img [ref=e12]
+          - text: 현황
+        - link "에이전트" [ref=e17] [cursor=pointer]:
+          - /url: /dashboard/agents
+          - img [ref=e18]
+          - text: 에이전트
+        - link "스킬" [ref=e23] [cursor=pointer]:
+          - /url: /dashboard/skills
+          - img [ref=e24]
+          - text: 스킬
+        - link "도구" [ref=e26] [cursor=pointer]:
+          - /url: /dashboard/tools
+          - img [ref=e27]
+          - text: 도구
+        - link "프롬프트" [ref=e29] [cursor=pointer]:
+          - /url: /dashboard/prompts
+          - img [ref=e30]
+          - text: 프롬프트
+        - link "플레이그라운드" [ref=e34] [cursor=pointer]:
+          - /url: /dashboard/playground
+          - img [ref=e35]
+          - text: 플레이그라운드
+        - link "스케줄" [ref=e37] [cursor=pointer]:
+          - /url: /dashboard/schedules
+          - img [ref=e38]
+          - text: 스케줄
+        - link "평가" [ref=e41] [cursor=pointer]:
+          - /url: /dashboard/evaluation
+          - img [ref=e42]
+          - text: 평가
+        - link "피드백" [ref=e45] [cursor=pointer]:
+          - /url: /dashboard/feedback
+          - img [ref=e46]
+          - text: 피드백
+        - link "모니터링" [ref=e48] [cursor=pointer]:
+          - /url: /dashboard/monitoring
+          - img [ref=e49]
+          - text: 모니터링
+        - link "AI 사용량" [ref=e51] [cursor=pointer]:
+          - /url: /dashboard/ai-usage
+          - img [ref=e52]
+          - text: AI 사용량
+        - link "로그" [ref=e54] [cursor=pointer]:
+          - /url: /dashboard/logs
+          - img [ref=e55]
+          - text: 로그
+        - link "설정" [ref=e58] [cursor=pointer]:
+          - /url: /dashboard/settings
+          - img [ref=e59]
+          - text: 설정
+      - link "사용자 채팅 →" [ref=e63] [cursor=pointer]:
+        - /url: /chat
+        - img [ref=e64]
+        - text: 사용자 채팅 →
+      - generic [ref=e67]:
+        - status "시스템 정상" [ref=e68]
+        - generic [ref=e69]: 관리자 모드
+    - main "대시보드 콘텐츠" [ref=e70]
+  - alert [ref=e86]

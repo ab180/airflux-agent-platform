@@ -1,7 +1,27 @@
 # Agent Routing Rules
-# 단일 에이전트 모드: 모든 요청이 airflux-agent로 라우팅
-# airflux-agent가 내부적으로 서브에이전트(data-query, code-search, report-builder)에 위임
+# 키워드 매칭으로 빠르게 라우팅, 매칭 실패 시 chief-agent가 처리
 
-rules: []
+llmRouterEnabled: true
 
-fallback: airflux-agent
+rules:
+  - agent: data-agent
+    priority: 100
+    keywords: ["DAU", "MAU", "WAU", "SQL", "쿼리", "매출", "revenue", "이벤트 수", "리텐션", "retention", "install", "설치", "전환율"]
+    description: "데이터 분석/메트릭 관련 질문"
+
+  - agent: admin-agent
+    priority: 90
+    keywords: ["파일 생성", "파일 쓰기", "PR 생성", "명령 실행", "스케줄 생성", "write file", "create PR"]
+    description: "시스템 변경 작업"
+
+  - agent: research-agent
+    priority: 80
+    keywords: ["분석해줘", "보고서", "리서치", "코드 리뷰", "심층 분석", "왜 그런지", "원인"]
+    description: "심층 분석/리서치"
+
+  - agent: ops-agent
+    priority: 70
+    keywords: ["시스템 상태", "health", "에이전트 상태", "서버 상태", "모니터링"]
+    description: "시스템 운영 상태"
+
+fallback: chief-agent

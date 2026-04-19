@@ -1,7 +1,8 @@
-# Airflux Agent — 메인 에이전트 (모든 요청의 진입점)
-- name: airflux-agent
+# Chief Agent — CEO/라우터. 모든 쿼리의 진입점
+- name: chief-agent
   enabled: true
-  description: 'AB180 Airflux AI 어시스턴트 — 데이터 분석, 문서 검색, 리포트 생성'
+  provider: claude
+  description: 'AB180 Airflux CEO 에이전트 — 사용자 요청을 이해하고 직접 처리하거나 전문 에이전트에 위임'
   model: default
   skills: []
   tools:
@@ -9,23 +10,24 @@
     - calculate
     - formatJson
     - httpGet
+    - lookupTerm
+    - findTermsInQuery
+    - searchDocs
+    - getAgentInfo
     - getSystemInfo
     - normalizeTime
     - extractTimeFromQuery
-    - lookupTerm
-    - findTermsInQuery
-    - getSemanticLayer
-    - getTableSchema
-    - getMetricSQL
-    - queryData
-    - searchDocs
-    - getAgentInfo
+    - readFile
+    - listFiles
+    - renderChart
     - generateChartData
-  maxSteps: 10
+    - sendAgentMessage
+    - getAgentMessages
+  maxSteps: 8
   temperature: 0
   advisor:
     model: powerful
-    maxUses: 3
+    maxUses: 2
   subagents:
     - name: data-query
       description: '데이터 조회/분석 전문 서브에이전트. SQL 생성, 비용 최적화, 메트릭 계산.'
@@ -37,16 +39,100 @@
       prompt: 'Airflux 프로젝트의 설계 문서, CLAUDE.md, 스키마 파일을 검색합니다.'
       model: fast
       tools: [searchDocs, getAgentInfo, getSystemInfo]
-    - name: report-builder
-      description: '차트/리포트 생성 서브에이전트.'
-      prompt: '데이터를 recharts 호환 차트 데이터 또는 마크다운 테이블로 변환합니다.'
-      model: default
-      tools: [generateChartData, calculate, formatJson]
 
-# Assistant Agent — LLM 범용 대화
+# Ops Agent — COO. 시스템 헬스, 메시지 처리, 모니터링 (상시가동)
+- name: ops-agent
+  enabled: true
+  provider: claude
+  description: 'Operations 에이전트 — 시스템 상태 모니터링, 에이전트 간 메시지 처리, 이상 감지'
+  model: fast
+  skills: []
+  tools:
+    - getTimestamp
+    - getAgentInfo
+    - getSystemInfo
+    - httpGet
+    - sendAgentMessage
+    - getAgentMessages
+  maxSteps: 5
+  temperature: 0
+  schedule:
+    - name: heartbeat
+      cron: "*/2 * * * *"
+      question: "시스템 상태를 확인하고 요약해주세요. 에이전트 가동 상태, 등록된 도구 수를 간결하게 보고."
+      channels: []
+      enabled: false  # FROZEN 2026-04-18 — see docs/FROZEN.md (ops-agent heartbeat)
+
+# Data Agent — 데이터 분석 전문
+- name: data-agent
+  enabled: true
+  provider: claude
+  description: '데이터 분석 에이전트 — SQL 생성, 메트릭 조회, 이상 탐지, 차트 생성'
+  model: default
+  skills: []
+  tools:
+    - getTimestamp
+    - calculate
+    - normalizeTime
+    - extractTimeFromQuery
+    - lookupTerm
+    - findTermsInQuery
+    - getSemanticLayer
+    - getTableSchema
+    - getMetricSQL
+    - queryData
+    - generateChartData
+    - renderChart
+    - formatJson
+  maxSteps: 8
+  temperature: 0
+
+# Research Agent — 심층 분석, 보고서 (Codex/OpenAI 백본)
+- name: research-agent
+  enabled: true
+  provider: openai
+  description: '리서치 에이전트 — 심층 분석, 코드 리뷰, 보고서 작성, 웹 검색'
+  model: default
+  skills: []
+  tools:
+    - getTimestamp
+    - calculate
+    - httpGet
+    - searchDocs
+    - readFile
+    - listFiles
+    - searchGitHub
+    - webSearch
+    - formatJson
+    - getAgentInfo
+  maxSteps: 8
+  temperature: 0
+
+# Admin Agent — 시스템 관리 (Codex/OpenAI 백본)
+- name: admin-agent
+  enabled: true
+  provider: openai
+  description: '관리자 에이전트 — 파일 쓰기, 명령 실행, PR 생성, 스케줄 관리'
+  model: default
+  skills: []
+  tools:
+    - getTimestamp
+    - readFile
+    - listFiles
+    - writeFile
+    - runCommand
+    - createPR
+    - manageSchedule
+    - confirmAction
+    - gitInfo
+  maxSteps: 10
+  temperature: 0
+
+# Assistant Agent — 범용 대화 (fallback)
 - name: assistant-agent
   enabled: true
-  description: 'LLM-powered AI assistant with tool access'
+  provider: claude
+  description: 'LLM 범용 어시스턴트 — 일반 질문, 번역, 요약 등'
   model: default
   skills: []
   tools:
@@ -56,26 +142,7 @@
     - httpGet
     - getSystemInfo
     - normalizeTime
-    - extractTimeFromQuery
     - lookupTerm
     - findTermsInQuery
-    - getSemanticLayer
-    - getTableSchema
-    - getMetricSQL
   maxSteps: 5
   temperature: 0
-
-# 비활성 에이전트
-- name: data-agent
-  enabled: false
-  description: 'Data analysis agent (requires Snowflake connection)'
-  model: powerful
-  skills: []
-  tools: [getSemanticLayer, getTableSchema, getMetricSQL, normalizeTime, lookupTerm]
-
-- name: research-agent
-  enabled: false
-  description: 'Anomaly detection and research agent'
-  model: powerful
-  skills: []
-  tools: [httpGet, getSystemInfo, calculate]

@@ -12,18 +12,21 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^2.0.0",
+    "@ai-sdk/openai": "^3.0.53",
     "@airflux/core": "*",
     "@hono/node-server": "^1.14.0",
     "@types/pg": "^8.20.0",
     "ai": "^6.0.0",
     "better-sqlite3": "^12.8.0",
     "hono": "^4.7.0",
+    "node-cron": "^4.2.1",
     "pg": "^8.20.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.0.0",
+    "@types/node-cron": "^3.0.11",
     "tsx": "^4.19.0",
     "typescript": "^5.8.0",
     "vitest": "^3.0.0"

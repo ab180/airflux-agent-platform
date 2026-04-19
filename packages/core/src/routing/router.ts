@@ -10,17 +10,41 @@ export interface RoutingRule {
 export interface RoutingConfig {
   rules: RoutingRule[];
   fallback: string;
+  llmRouterEnabled?: boolean;
+}
+
+export interface RoutingCandidate {
+  name: string;
+  description?: string;
+}
+
+export interface LLMRouteDecision {
+  agent: string;
+  reason?: string | null;
+}
+
+export interface RouteResult {
+  agent: string;
+  matchedRule: string | null;
+  llmRouted?: boolean;
+  reason?: string | null;
+}
+
+export interface AgentRouterOptions {
+  llmRouter?: (query: string, candidates: RoutingCandidate[]) => Promise<LLMRouteDecision | null>;
 }
 
 export class AgentRouter {
   private rules: RoutingRule[];
   private fallback: string;
   private compiledPatterns: Map<string, RegExp[]>;
+  private llmRouter?: AgentRouterOptions['llmRouter'];
 
-  constructor(config: RoutingConfig) {
+  constructor(config: RoutingConfig, options: AgentRouterOptions = {}) {
     this.rules = config.rules.sort((a, b) => b.priority - a.priority);
     this.fallback = config.fallback;
     this.compiledPatterns = new Map();
+    this.llmRouter = config.llmRouterEnabled === false ? undefined : options.llmRouter;
 
     for (const rule of this.rules) {
       if (rule.patterns) {
@@ -37,7 +61,7 @@ export class AgentRouter {
     }
   }
 
-  route(query: string): { agent: string; matchedRule: string | null } {
+  async route(query: string): Promise<RouteResult> {
     const lowerQuery = query.toLowerCase();
 
     for (const rule of this.rules) {
@@ -60,6 +84,28 @@ export class AgentRouter {
         for (const pattern of patterns) {
           if (pattern.test(query)) {
             return { agent: rule.agent, matchedRule: `pattern:${pattern.source}` };
+          }
+        }
+      }
+    }
+
+    if (this.llmRouter) {
+      const candidates = AgentRegistry.listEnabled().map(agent => ({
+        name: agent.name,
+        description: agent.config.description,
+      }));
+
+      if (candidates.length > 0) {
+        const decision = await this.llmRouter(query, candidates);
+        if (decision?.agent) {
+          const selected = AgentRegistry.getOptional(decision.agent);
+          if (selected?.isEnabled()) {
+            return {
+              agent: decision.agent,
+              matchedRule: null,
+              llmRouted: true,
+              reason: decision.reason ?? null,
+            };
           }
         }
       }

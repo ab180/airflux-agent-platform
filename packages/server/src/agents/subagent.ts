@@ -5,19 +5,15 @@
  * Each subagent runs as a separate LLM call with its own prompt and tool subset.
  * The main agent invokes subagents as regular tools.
  *
- * Usage in agents.yaml:
- *   - name: main-agent
- *     model: powerful
- *     subagents:
- *       - name: data-analyst
- *         description: "데이터 분석 전문 서브에이전트"
- *         prompt: "데이터 분석 전문가로서 질문에 답변하세요."
- *         model: default
- *         tools: [getSemanticLayer, getTableSchema, calculate]
+ * Execution priority:
+ *   1. AI SDK (OAuth/API key) — full tool calling support
+ *   2. Claude CLI fallback — text-only, no tool calling
  */
 
+import { generateText, stepCountIs } from 'ai';
 import type { SubagentConfig, AgentTool } from '@airflux/core';
 import { ToolRegistry } from '@airflux/core';
+import { createModelAsync } from '../llm/model-factory.js';
 import { isClaudeCliAvailable, callClaudeCli } from '../llm/claude-cli-provider.js';
 import { logger } from '../lib/logger.js';
 import { recordCost } from '../llm/cost-tracker.js';
@@ -57,51 +53,106 @@ export function createSubagentTools(configs: SubagentConfig[]): Record<string, A
 
 /**
  * Execute a subagent with its own prompt, model, and tool subset.
- * Currently uses Claude CLI as the execution backend.
+ * Tries AI SDK first (with real tool calling), falls back to CLI.
  */
 async function executeSubagent(config: SubagentConfig, query: string): Promise<unknown> {
   const startTime = performance.now();
 
-  // Build context with available tool descriptions
-  const toolDescriptions = config.tools
-    .map(name => {
-      const tool = ToolRegistry.getOptional(name);
-      return tool ? `- ${name}: ${tool.description}` : null;
-    })
-    .filter(Boolean)
+  // Resolve actual tools from registry
+  const subagentTools: Record<string, AgentTool> = {};
+  for (const name of config.tools) {
+    const tool = ToolRegistry.getOptional(name);
+    if (tool) subagentTools[name] = tool;
+  }
+
+  const toolDescriptions = Object.entries(subagentTools)
+    .map(([name, t]) => `- ${name}: ${t.description}`)
     .join('\n');
 
   const systemPrompt = `${config.prompt}\n\n사용 가능한 도구:\n${toolDescriptions}`;
+  const modelTier = config.model || 'default';
 
   try {
-    if (!isClaudeCliAvailable()) {
-      return { error: 'LLM not available for subagent execution' };
+    // Try AI SDK first — enables real tool calling
+    const model = await createModelAsync(modelTier as 'fast' | 'default' | 'powerful');
+
+    // Convert tools to AI SDK format (same pattern as assistant-agent.ts)
+    const aiTools: Record<string, { description: string; parameters: unknown; execute: (input: unknown) => Promise<unknown> }> = {};
+    for (const [name, t] of Object.entries(subagentTools)) {
+      aiTools[name] = {
+        description: t.description,
+        parameters: t.inputSchema,
+        execute: async (input: unknown) => t.execute(input),
+      };
     }
 
-    const cliModel = TIER_TO_CLI_MODEL[config.model] || TIER_TO_CLI_MODEL['default'];
-    const response = callClaudeCli(query, systemPrompt, cliModel);
-    const durationMs = Math.round(performance.now() - startTime);
+    const result = await generateText({
+      model,
+      system: systemPrompt,
+      prompt: query,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tools: aiTools as any,
+      stopWhen: stepCountIs(config.maxSteps || 5),
+      temperature: 0,
+    });
 
-    // Track subagent cost separately
+    const durationMs = Math.round(performance.now() - startTime);
+    const toolCalls = result.steps.flatMap(s => s.toolCalls || []).map(tc => tc.toolName);
+
     recordCost({
       timestamp: new Date().toISOString(),
       agent: `subagent:${config.name}`,
-      model: config.model,
-      inputTokens: 0, // CLI doesn't report tokens
-      outputTokens: 0,
+      model: modelTier,
+      inputTokens: result.usage?.inputTokens ?? 0,
+      outputTokens: result.usage?.outputTokens ?? 0,
       durationMs,
     });
 
-    logger.info('Subagent executed', {
+    logger.info('Subagent executed (AI SDK)', {
       subagent: config.name,
-      model: config.model,
+      model: modelTier,
+      toolCalls,
+      steps: result.steps.length,
       durationMs,
     });
 
-    return { response, subagent: config.name, durationMs };
-  } catch (e) {
-    const message = e instanceof Error ? e.message : 'Unknown error';
-    logger.warn('Subagent execution failed', { subagent: config.name, error: message });
-    return { error: `Subagent ${config.name} failed: ${message}` };
+    return { response: result.text, subagent: config.name, toolCalls, durationMs };
+  } catch (sdkError) {
+    // AI SDK failed — try CLI fallback (text-only, no tool calling)
+    logger.info('Subagent AI SDK unavailable, trying CLI', {
+      subagent: config.name,
+      error: sdkError instanceof Error ? sdkError.message : String(sdkError),
+    });
+
+    try {
+      if (!isClaudeCliAvailable()) {
+        return { error: 'LLM not available for subagent execution' };
+      }
+
+      const cliModel = TIER_TO_CLI_MODEL[modelTier] || TIER_TO_CLI_MODEL['default'];
+      const response = callClaudeCli(query, systemPrompt, cliModel);
+      const durationMs = Math.round(performance.now() - startTime);
+
+      recordCost({
+        timestamp: new Date().toISOString(),
+        agent: `subagent:${config.name}`,
+        model: modelTier,
+        inputTokens: 0,
+        outputTokens: 0,
+        durationMs,
+      });
+
+      logger.info('Subagent executed (CLI fallback)', {
+        subagent: config.name,
+        model: modelTier,
+        durationMs,
+      });
+
+      return { response, subagent: config.name, durationMs };
+    } catch (cliError) {
+      const message = cliError instanceof Error ? cliError.message : 'Unknown error';
+      logger.warn('Subagent execution failed', { subagent: config.name, error: message });
+      return { error: `Subagent ${config.name} failed: ${message}` };
+    }
   }
 }

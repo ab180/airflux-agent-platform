@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -10,11 +11,15 @@ interface ChatMessageProps {
   text: string;
   toolCalls?: string[];
   chartData?: ChartData;
+  thinking?: string;
 }
 
-export function ChatMessage({ text, toolCalls, chartData }: ChatMessageProps) {
+export function ChatMessage({ text, toolCalls, chartData, thinking }: ChatMessageProps) {
   return (
     <div className="space-y-0">
+      {/* Extended thinking accordion */}
+      {thinking && <ThinkingAccordion thinking={thinking} />}
+
       {/* Tool calls accordion */}
       {toolCalls && toolCalls.length > 0 && (
         <ToolAccordion toolCalls={toolCalls} />
@@ -44,6 +49,29 @@ export function ChatMessage({ text, toolCalls, chartData }: ChatMessageProps) {
 
       {/* Chart visualization */}
       {chartData && <DataChart chart={chartData} />}
+    </div>
+  );
+}
+
+function ThinkingAccordion({ thinking }: { thinking: string }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="mb-2">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[11px] text-muted-foreground transition-colors hover:bg-muted/30"
+        aria-expanded={expanded}
+      >
+        <span className="text-violet-400">💭</span>
+        <span className="font-medium text-violet-300/80">사고 과정</span>
+        <span className="ml-auto text-[10px] text-muted-foreground/60">{expanded ? "▼" : "▶"}</span>
+      </button>
+      {expanded && (
+        <div className="ml-2 mt-1 rounded-md border border-violet-500/20 bg-violet-500/5 px-3 py-2.5 text-[11px] leading-relaxed text-muted-foreground whitespace-pre-wrap font-mono">
+          {thinking}
+        </div>
+      )}
     </div>
   );
 }

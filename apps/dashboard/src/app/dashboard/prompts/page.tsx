@@ -1,9 +1,64 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { diffLines } from "diff";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { fetchClient, postClient } from "@/lib/client-api";
+
+interface DiffLineProps {
+  base: string;
+  next: string;
+}
+
+function PromptDiff({ base, next }: DiffLineProps) {
+  const parts = diffLines(base, next);
+  let addedCount = 0;
+  let removedCount = 0;
+  for (const p of parts) {
+    if (p.added) addedCount += p.count ?? 0;
+    if (p.removed) removedCount += p.count ?? 0;
+  }
+  if (addedCount === 0 && removedCount === 0) {
+    return (
+      <div className="rounded-md border border-border/50 bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
+        현재 버전과 동일합니다.
+      </div>
+    );
+  }
+  return (
+    <div className="overflow-hidden rounded-md border border-border/50">
+      <div className="flex items-center gap-3 border-b border-border/30 bg-muted/40 px-3 py-1.5 text-[10px] font-mono text-muted-foreground">
+        <span>vs 현재</span>
+        <span className="text-emerald-400">+{addedCount}</span>
+        <span className="text-red-400">-{removedCount}</span>
+      </div>
+      <pre className="m-0 whitespace-pre-wrap font-mono text-[11px] leading-relaxed">
+        {parts.map((p, i) => {
+          const bg = p.added
+            ? "bg-emerald-500/10 text-emerald-200"
+            : p.removed
+              ? "bg-red-500/10 text-red-200"
+              : "text-muted-foreground/70";
+          const prefix = p.added ? "+ " : p.removed ? "- " : "  ";
+          return (
+            <span key={i} className={`block ${bg}`}>
+              {p.value
+                .split("\n")
+                .filter((line, j, arr) => !(j === arr.length - 1 && line === ""))
+                .map((line, j) => (
+                  <span key={j} className="block px-3">
+                    {prefix}
+                    {line || " "}
+                  </span>
+                ))}
+            </span>
+          );
+        })}
+      </pre>
+    </div>
+  );
+}
 
 interface PromptVersion {
   id: number;
@@ -24,16 +79,26 @@ export default function PromptsPage() {
   const [newDescription, setNewDescription] = useState("");
   const [newContent, setNewContent] = useState("");
   const [saving, setSaving] = useState(false);
+  const [diffOpenId, setDiffOpenId] = useState<number | null>(null);
 
   // Load agents list
   useEffect(() => {
+    const fromUrl =
+      typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("agent")
+        : null;
     fetchClient<{ agents: { name: string }[] }>("/api/admin/agents")
       .then(data => {
         const names = (data.agents || []).map(a => a.name);
         setAgents(names);
-        if (names.length > 0 && !selectedAgent) setSelectedAgent(names[0]);
+        if (fromUrl && names.includes(fromUrl)) {
+          setSelectedAgent(fromUrl);
+        } else if (names.length > 0 && !selectedAgent) {
+          setSelectedAgent(names[0]);
+        }
       })
       .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Load versions for selected agent
@@ -94,7 +159,11 @@ export default function PromptsPage() {
         <div>
           <h1 className="text-lg font-semibold tracking-tight">프롬프트</h1>
           <p className="text-[13px] text-muted-foreground">
-            에이전트별 시스템 프롬프트 버전 관리
+            에이전트별 시스템 프롬프트 버전 관리 · 저장한 "현재 버전"이
+            즉시 에이전트에 반영됩니다{" "}
+            <span className="text-muted-foreground/70">
+              (없으면 <code className="font-mono text-[11px]">settings/instructions/{"<agent>"}.md</code> 사용)
+            </span>
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -228,37 +297,57 @@ export default function PromptsPage() {
                 day: "numeric",
               });
 
+              const isDiffOpen = diffOpenId === v.id;
               return (
                 <div
                   key={v.id}
-                  className="flex items-center justify-between rounded-lg border border-border/50 px-4 py-2.5"
+                  className="rounded-lg border border-border/50"
                 >
-                  <div className="flex items-center gap-2.5">
-                    <span className="font-mono text-[12px] font-medium">
-                      {v.version}
-                    </span>
-                    {v.isCurrent && (
-                      <Badge variant="outline" className="border-emerald-500/30 text-[9px] text-emerald-400">
-                        현재
-                      </Badge>
-                    )}
-                    <span className="text-[11px] text-muted-foreground">
-                      {v.description || "—"}
-                    </span>
+                  <div className="flex items-center justify-between px-4 py-2.5">
+                    <div className="flex items-center gap-2.5">
+                      <span className="font-mono text-[12px] font-medium">
+                        {v.version}
+                      </span>
+                      {v.isCurrent && (
+                        <Badge variant="outline" className="border-emerald-500/30 text-[9px] text-emerald-400">
+                          현재
+                        </Badge>
+                      )}
+                      <span className="text-[11px] text-muted-foreground">
+                        {v.description || "—"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-muted-foreground">{dateStr}</span>
+                      {!v.isCurrent && current && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-[10px]"
+                          onClick={() =>
+                            setDiffOpenId(isDiffOpen ? null : v.id)
+                          }
+                        >
+                          {isDiffOpen ? "닫기" : "비교"}
+                        </Button>
+                      )}
+                      {!v.isCurrent && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-[10px]"
+                          onClick={() => rollback(v.id)}
+                        >
+                          롤백
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-muted-foreground">{dateStr}</span>
-                    {!v.isCurrent && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 text-[10px]"
-                        onClick={() => rollback(v.id)}
-                      >
-                        롤백
-                      </Button>
-                    )}
-                  </div>
+                  {isDiffOpen && current && (
+                    <div className="border-t border-border/30 p-3">
+                      <PromptDiff base={v.content} next={current.content} />
+                    </div>
+                  )}
                 </div>
               );
             })}

@@ -6,6 +6,15 @@
 
 import { getPgPool, isPostgresAvailable } from './pg.js';
 import { randomUUID } from 'crypto';
+import { getEnvironment, type StorageStrategy } from '../runtime/environment.js';
+
+/**
+ * Which backend this store currently uses.
+ * Routed through environment.ts so mode switches live in one place.
+ */
+export function getConversationStoreBackend(): StorageStrategy {
+  return getEnvironment().storageStrategy;
+}
 
 export interface Conversation {
   id: string;
@@ -14,6 +23,23 @@ export interface Conversation {
   title: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Get a single conversation if owned by the user. */
+export async function getConversation(
+  conversationId: string,
+  userId: string,
+): Promise<Conversation | null> {
+  if (!isPostgresAvailable()) return null;
+
+  const pool = getPgPool();
+  const result = await pool.query(
+    `SELECT id, user_id as "userId", agent, title, created_at as "createdAt", updated_at as "updatedAt"
+     FROM conversations
+     WHERE id = $1 AND user_id = $2`,
+    [conversationId, userId],
+  );
+  return (result.rows[0] as Conversation | undefined) || null;
 }
 
 export interface ChatMessage {
@@ -78,10 +104,18 @@ export async function addMessage(msg: Omit<ChatMessage, 'id' | 'createdAt'>): Pr
 }
 
 /** Get messages for a conversation (no limit — full history). */
-export async function getMessages(conversationId: string, limit: number = 100): Promise<ChatMessage[]> {
+export async function getMessages(
+  conversationId: string,
+  limit: number = 100,
+  userId?: string,
+): Promise<ChatMessage[]> {
   if (!isPostgresAvailable()) return [];
 
   const pool = getPgPool();
+  if (userId) {
+    const owned = await getConversation(conversationId, userId);
+    if (!owned) return [];
+  }
   const result = await pool.query(
     `SELECT id, conversation_id as "conversationId", role, text, agent, trace_id as "traceId",
             duration_ms as "durationMs", input_tokens as "inputTokens", output_tokens as "outputTokens",
@@ -106,10 +140,12 @@ export async function listConversations(userId: string, limit: number = 50): Pro
 }
 
 /** Delete a conversation and all its messages. */
-export async function deleteConversation(conversationId: string): Promise<boolean> {
+export async function deleteConversation(conversationId: string, userId?: string): Promise<boolean> {
   if (!isPostgresAvailable()) return false;
 
   const pool = getPgPool();
-  const result = await pool.query('DELETE FROM conversations WHERE id = $1', [conversationId]);
+  const result = userId
+    ? await pool.query('DELETE FROM conversations WHERE id = $1 AND user_id = $2', [conversationId, userId])
+    : await pool.query('DELETE FROM conversations WHERE id = $1', [conversationId]);
   return (result.rowCount ?? 0) > 0;
 }

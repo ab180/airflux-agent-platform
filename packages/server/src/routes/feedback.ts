@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { randomUUID } from 'crypto';
 import { insertFeedback } from '../store/feedback-store.js';
 import { logger } from '../lib/logger.js';
+import { resolveTrustedUserId } from '../security/trusted-user.js';
 
 const UUID_PATTERN = /^[0-9a-f-]{36}$/i;
 const AGENT_NAME_PATTERN = /^[a-z][a-z0-9-]{0,49}$/;
@@ -44,12 +45,11 @@ feedbackRoute.post('/feedback', async (c) => {
   }
 
   // userId: optional, length-limited
-  let userId = 'anonymous';
-  if (b.userId !== undefined) {
+  let userId = resolveTrustedUserId(new Headers(c.req.raw.headers), 'anonymous');
+  if (userId === 'anonymous' && b.userId !== undefined) {
     if (typeof b.userId !== 'string' || b.userId.length > MAX_USER_ID_LENGTH) {
       return c.json({ success: false, error: `userId must be a string of max ${MAX_USER_ID_LENGTH} chars` }, 400);
     }
-    userId = b.userId;
   }
 
   // comment: optional, truncated

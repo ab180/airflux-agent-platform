@@ -7,7 +7,8 @@
 import { Hono } from 'hono';
 import { spawn } from 'child_process';
 import { logger } from '../lib/logger.js';
-import { isClaudeCliAvailable } from '../llm/claude-cli-provider.js';
+import { isClaudeCliAvailable, resetCliAvailableCache } from '../llm/claude-cli-provider.js';
+import { clearApiKeyCache } from '../llm/model-factory.js';
 
 export const cliAuthRoutes = new Hono();
 
@@ -63,6 +64,11 @@ cliAuthRoutes.post('/cli-auth/login', async (c) => {
     child.on('close', (code) => {
       job.status = code === 0 ? 'success' : 'failed';
       logger.info(`CLI login completed`, { provider, code, output: job.output.slice(0, 200) });
+      if (code === 0) {
+        // Reset cached auth state so next check reflects the new login
+        resetCliAvailableCache();
+        clearApiKeyCache();
+      }
     });
 
     child.on('error', (err) => {
