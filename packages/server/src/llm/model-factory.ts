@@ -7,6 +7,7 @@ import { isClaudeCliAvailable } from './claude-cli-provider.js';
 import { isCodexCliAvailable } from './codex-cli-provider.js';
 import { logger } from '../lib/logger.js';
 import { getEnvironment, type CredentialStrategy } from '../runtime/environment.js';
+import { evaluateLLMHealth, type LLMHealthResult } from './health.js';
 
 export function getModelCredentialSource(): CredentialStrategy {
   return getEnvironment().credentialStrategy;
@@ -239,13 +240,10 @@ export async function createModelAsync(tier: ModelTier = 'default'): Promise<Ret
     // no API key
   }
 
-  // 2. Try ANTHROPIC_AUTH_TOKEN env var (set by setup-docker-env.sh from Keychain)
-  if (process.env.ANTHROPIC_AUTH_TOKEN) {
-    keySource = 'env:ANTHROPIC_AUTH_TOKEN';
-    return makeOAuthModel(process.env.ANTHROPIC_AUTH_TOKEN, tier);
-  }
-
-  // 3. Try Claude Max OAuth from credentials file (auto-refreshes if expired)
+  // 2. Claude Max OAuth from credentials file is preferred — it's
+  //    refreshable and locally verifiable. We try this BEFORE the static
+  //    ANTHROPIC_AUTH_TOKEN env var so a long-expired env token doesn't
+  //    shadow a still-valid (or refreshable) credentials.json.
   const oauthToken = await getFreshOAuthToken();
   if (oauthToken) {
     keySource = 'claude-max-oauth';
@@ -263,6 +261,15 @@ export async function createModelAsync(tier: ModelTier = 'default'): Promise<Ret
     return anthropic(TIER_MODELS[tier]);
   }
 
+  // 3. Last resort: ANTHROPIC_AUTH_TOKEN env var. Used only if the
+  //    credentials.json path above produced nothing (no file, or no refresh
+  //    grant). This env source is unverifiable locally — the LLM request
+  //    itself is the first moment we find out if it's stale.
+  if (process.env.ANTHROPIC_AUTH_TOKEN) {
+    keySource = 'env:ANTHROPIC_AUTH_TOKEN';
+    return makeOAuthModel(process.env.ANTHROPIC_AUTH_TOKEN, tier);
+  }
+
   throw new Error('No LLM available. Set ANTHROPIC_API_KEY or run `claude login`.');
 }
 
@@ -272,58 +279,142 @@ export function createModel(tier: ModelTier = 'default'): ReturnType<ReturnType<
   return createAnthropic({ apiKey })(TIER_MODELS[tier]);
 }
 
+/**
+ * Canonical LLM credential health check.
+ * Distinguishes "configured but expired" from "ready" so callers
+ * (health endpoint, dashboard banner) can surface actionable status.
+ */
+export function getLLMHealth(): LLMHealthResult {
+  const apiKey =
+    process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY.length > 0
+      ? process.env.ANTHROPIC_API_KEY
+      : null;
+  const authTokenPresent = !!process.env.ANTHROPIC_AUTH_TOKEN;
+  const creds = readCredentials();
+  return evaluateLLMHealth({
+    apiKey,
+    authTokenPresent,
+    creds: creds
+      ? { accessToken: creds.accessToken, expiresAt: creds.expiresAt }
+      : null,
+    now: Date.now(),
+  });
+}
+
 export function isLLMAvailable(): boolean {
-  try { getAnthropicApiKey(); return true; } catch { /* no key */ }
-  if (process.env.ANTHROPIC_AUTH_TOKEN) return true;
-  if (readCredentials() !== null) return true;
-  if (isClaudeCliAvailable()) return true;
+  const health = getLLMHealth();
+  if (health.healthy) return true;
+  // OpenAI / Codex CLI paths are independent of the Anthropic health model.
   if (process.env.OPENAI_API_KEY) return true;
+  if (isClaudeCliAvailable()) return true;
   return isCodexCliAvailable();
 }
 
-export function getLLMStatus(): { available: boolean; source: string; providers: string[] } {
+export interface LLMStatus {
+  available: boolean;
+  source: string;
+  providers: string[];
+  healthy: boolean;
+  expired: boolean;
+  hoursExpired?: number;
+  verified: boolean;
+  hint?: string;
+}
+
+export function getLLMStatus(): LLMStatus {
   const providers: string[] = [];
+  const health = getLLMHealth();
 
   try {
     getAnthropicApiKey();
     providers.push('anthropic');
-    return { available: true, source: keySource, providers };
+    return {
+      available: true,
+      source: keySource,
+      providers,
+      healthy: true,
+      expired: false,
+      verified: false,
+    };
   } catch { /* no API key */ }
 
-  // ANTHROPIC_AUTH_TOKEN from env (setup-docker-env.sh / Keychain)
-  if (process.env.ANTHROPIC_AUTH_TOKEN) {
-    providers.push('claude-max-oauth');
-    return { available: true, source: 'env:ANTHROPIC_AUTH_TOKEN', providers };
-  }
-
-  // OAuth credentials file
+  // OAuth credentials file — preferred source when present.
   const creds = readCredentials();
   if (creds) {
     providers.push('claude-max-oauth');
-    const expired = creds.expiresAt < Date.now() + 60_000;
+    return {
+      available: !health.expired, // expired creds → available=false (actionable)
+      source: health.expired
+        ? 'claude-max-oauth (expired)'
+        : 'claude-max-oauth',
+      providers,
+      healthy: health.healthy,
+      expired: health.expired,
+      hoursExpired: health.hoursExpired,
+      verified: health.verified,
+      hint: health.hint,
+    };
+  }
+
+  // ANTHROPIC_AUTH_TOKEN from env — unverifiable locally, best-effort.
+  if (process.env.ANTHROPIC_AUTH_TOKEN) {
+    providers.push('claude-max-oauth');
     return {
       available: true,
-      source: expired ? 'claude-max-oauth (refreshing)' : 'claude-max-oauth',
+      source: 'env:ANTHROPIC_AUTH_TOKEN',
       providers,
+      healthy: true,
+      expired: false,
+      verified: false,
+      hint: health.hint,
     };
   }
 
   if (isClaudeCliAvailable()) {
     providers.push('claude-cli');
-    return { available: true, source: 'claude-cli', providers };
+    return {
+      available: true,
+      source: 'claude-cli',
+      providers,
+      healthy: true,
+      expired: false,
+      verified: false,
+    };
   }
 
   if (process.env.OPENAI_API_KEY) {
     providers.push('openai');
-    return { available: true, source: 'env:OPENAI_API_KEY', providers };
+    return {
+      available: true,
+      source: 'env:OPENAI_API_KEY',
+      providers,
+      healthy: true,
+      expired: false,
+      verified: false,
+    };
   }
 
   if (isCodexCliAvailable()) {
     providers.push('codex-cli');
-    return { available: true, source: 'codex-cli', providers };
+    return {
+      available: true,
+      source: 'codex-cli',
+      providers,
+      healthy: true,
+      expired: false,
+      verified: false,
+    };
   }
 
-  return { available: false, source: 'none', providers };
+  return {
+    available: false,
+    source: 'none',
+    providers,
+    healthy: false,
+    expired: false,
+    verified: true,
+    hint: health.hint,
+  };
 }
 
 /**

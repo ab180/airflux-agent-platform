@@ -1,4 +1,5 @@
 import { Sidebar } from "@/components/dashboard/sidebar";
+import { LLMHealthBanner } from "@/components/dashboard/llm-health-banner";
 
 export default function DashboardLayout({
   children,
@@ -12,7 +13,10 @@ export default function DashboardLayout({
       </a>
       <Sidebar />
       <main id="main-content" className="ml-56 flex-1 overflow-y-auto" aria-label="대시보드 콘텐츠">
-        <div className="mx-auto max-w-6xl px-6 py-6">{children}</div>
+        <div className="mx-auto max-w-6xl px-6 py-6">
+          <LLMHealthBanner />
+          {children}
+        </div>
       </main>
     </div>
   );
