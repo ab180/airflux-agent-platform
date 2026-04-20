@@ -16,11 +16,27 @@ import {
 } from './rate-limit.js';
 import { getCodexAuthStatus, type CodexAuthStatus } from './codex-auth.js';
 
-// 0.0–1.0. When observed 5h utilization >= this, createModelAsync prefers
-// ANTHROPIC_API_KEY (if set) over the OAuth path — keeps headroom for the
-// user's interactive Claude Code usage on the same subscription. Override
-// with AIRFLUX_OAUTH_UTIL_THRESHOLD.
-const OAUTH_UTIL_THRESHOLD = Number(process.env.AIRFLUX_OAUTH_UTIL_THRESHOLD ?? 0.8);
+// Per-provider utilization thresholds (0.0–1.0). When the observed
+// utilization crosses this value, the router prefers the direct-API-key
+// path (if set) and deprioritizes that provider in decisioning.
+//
+// Claude Max rolling 5h/7d pool is generous — we exhaust it aggressively
+// (default 0.95) because the CLI auto-refreshes and wasted headroom is a
+// wasted subscription.
+//
+// Codex (ChatGPT subscription) quotas are shorter: weekly limit hits
+// faster and session limits are stricter. Default 0.5 — start deferring
+// earlier so interactive CLI use retains room.
+//
+// Override:
+//   AIRFLUX_CLAUDE_UTIL_THRESHOLD (was AIRFLUX_OAUTH_UTIL_THRESHOLD)
+//   AIRFLUX_CODEX_UTIL_THRESHOLD
+const CLAUDE_UTIL_THRESHOLD = Number(
+  process.env.AIRFLUX_CLAUDE_UTIL_THRESHOLD ??
+    process.env.AIRFLUX_OAUTH_UTIL_THRESHOLD ??
+    0.95,
+);
+const CODEX_UTIL_THRESHOLD = Number(process.env.AIRFLUX_CODEX_UTIL_THRESHOLD ?? 0.5);
 
 export function getModelCredentialSource(): CredentialStrategy {
   return getEnvironment().credentialStrategy;
@@ -282,12 +298,11 @@ export async function createModelAsync(tier: ModelTier = 'default'): Promise<Ret
   }
 
   // Routing policy: prefer Claude Max OAuth (free under subscription) until
-  // observed utilization crosses AIRFLUX_OAUTH_UTIL_THRESHOLD, then fall
-  // back to ANTHROPIC_API_KEY (if set) so the user's interactive Claude
-  // Code usage keeps headroom. If no API key is configured, OAuth is used
-  // regardless — the alternative is failing.
+  // observed utilization crosses CLAUDE_UTIL_THRESHOLD (default 0.95), then
+  // fall back to ANTHROPIC_API_KEY (if set). If no API key is configured,
+  // OAuth is used regardless — the alternative is failing.
   const apiKeyAvailable = !!process.env.ANTHROPIC_API_KEY || !!cachedApiKey;
-  const preferApiKey = apiKeyAvailable && shouldPreferApiKey(OAUTH_UTIL_THRESHOLD);
+  const preferApiKey = apiKeyAvailable && shouldPreferApiKey(CLAUDE_UTIL_THRESHOLD);
   if (preferApiKey) {
     try {
       const apiKey = getAnthropicApiKey();
@@ -373,9 +388,17 @@ export interface LLMStatus {
   hint?: string;
   /** Latest observed Claude Max OAuth subscription quota usage. */
   rateLimit?: RateLimitState | null;
-  /** Threshold (0-1) at which the server prefers ANTHROPIC_API_KEY over OAuth. */
+  /** @deprecated use claudeUtilizationThreshold; kept for older dashboard builds. */
   oauthUtilizationThreshold?: number;
-  /** True if an API key is available to fall back to when OAuth saturates. */
+  /** Threshold (0-1) at which the server stops using Claude OAuth and
+   *  prefers ANTHROPIC_API_KEY (if set). Default 0.95 — Max quota is
+   *  generous, so we push close to the ceiling before falling back. */
+  claudeUtilizationThreshold?: number;
+  /** Threshold (0-1) at which the router starts steering away from Codex
+   *  OAuth (ChatGPT subscription) toward Claude. Default 0.5 — Codex
+   *  sessions and weekly pool are smaller, so we hedge earlier. */
+  codexUtilizationThreshold?: number;
+  /** True if an ANTHROPIC_API_KEY is available to fall back to. */
   apiKeyFallbackAvailable?: boolean;
   /** Codex / OpenAI auth state so the dashboard renders both providers. */
   codex?: CodexAuthStatus;
@@ -388,7 +411,9 @@ export function getLLMStatus(): LLMStatus {
   const apiKeyFallbackAvailable = !!process.env.ANTHROPIC_API_KEY || !!cachedApiKey;
   const common = {
     rateLimit,
-    oauthUtilizationThreshold: OAUTH_UTIL_THRESHOLD,
+    oauthUtilizationThreshold: CLAUDE_UTIL_THRESHOLD,
+    claudeUtilizationThreshold: CLAUDE_UTIL_THRESHOLD,
+    codexUtilizationThreshold: CODEX_UTIL_THRESHOLD,
     apiKeyFallbackAvailable,
     codex: getCodexAuthStatus(),
   };

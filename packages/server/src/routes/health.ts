@@ -24,6 +24,8 @@ healthRoute.get('/health', (c) => {
       hint: llm.hint,
       rateLimit: llm.rateLimit,
       oauthUtilizationThreshold: llm.oauthUtilizationThreshold,
+      claudeUtilizationThreshold: llm.claudeUtilizationThreshold,
+      codexUtilizationThreshold: llm.codexUtilizationThreshold,
       apiKeyFallbackAvailable: llm.apiKeyFallbackAvailable,
       codex: llm.codex,
     },
