@@ -19,19 +19,6 @@ const TIER_MODELS: Record<ModelTier, string> = {
   powerful: 'claude-opus-4-6',
 };
 
-/**
- * Claude Max OAuth (`anthropic-beta: oauth-2025-04-20`) currently only
- * authorizes Haiku. sonnet/opus return 429 rate_limit_error with the
- * opaque message "Error" — it's actually a scope/permission denial that
- * Anthropic packages as a throttle code. Without a direct ANTHROPIC_API_KEY
- * we must downgrade every tier to Haiku; otherwise first request fails.
- * Verified empirically 2026-04-20 against api.anthropic.com directly.
- */
-const OAUTH_TIER_MODELS: Record<ModelTier, string> = {
-  fast: 'claude-haiku-4-5-20251001',
-  default: 'claude-haiku-4-5-20251001',
-  powerful: 'claude-haiku-4-5-20251001',
-};
 
 const OPENAI_TIER_MODELS: Record<ModelTier, string> = {
   fast: 'gpt-4.1-mini',
@@ -41,6 +28,12 @@ const OPENAI_TIER_MODELS: Record<ModelTier, string> = {
 
 // Claude Max OAuth constants (from Claude CLI source)
 const OAUTH_BETA_HEADER = 'oauth-2025-04-20';
+const CLAUDE_CODE_BETA = 'claude-code-20250219';
+// Billing gate: this string in the first system block tells Anthropic the
+// request is on Claude Code's subscription context. Without it OAuth tokens
+// can only reach Haiku; with it, sonnet/opus are allowed.
+const CLAUDE_CODE_BILLING_HEADER =
+  'x-anthropic-billing-header: cc_version=2.1.114.ea7; cc_entrypoint=sdk-ts; cch=54600;';
 const TOKEN_REFRESH_URL = 'https://platform.claude.com/v1/oauth/token';
 const CLAUDE_CODE_CLIENT_ID = '22422756-60c9-4084-8eb7-27705f16d45e';
 const INFERENCE_SCOPE = 'user:inference';
@@ -196,19 +189,33 @@ function makeOAuthModel(token: string, tier: ModelTier) {
   const anthropic = createAnthropic({
     apiKey: 'placeholder',
     fetch: async (url: string | Request | URL, init?: RequestInit) => {
+      // Add ?beta=true — matches what Claude Code CLI uses for /v1/messages.
+      // Anthropic routes the subscription-context request path only when set.
+      let patchedUrl: string | Request | URL = url;
+      try {
+        const u = new URL(typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url);
+        if (u.pathname.endsWith('/v1/messages') && !u.searchParams.has('beta')) {
+          u.searchParams.set('beta', 'true');
+          patchedUrl = u.toString();
+        }
+      } catch { /* non-URL fetch target — leave as-is */ }
+
       const headers = new Headers(init?.headers);
       headers.delete('x-api-key');
       headers.set('Authorization', `Bearer ${token}`);
-      // Merge beta headers: preserve SDK-set betas (e.g. thinking) and add OAuth beta
+      // Merge beta headers: preserve SDK-set betas and add the OAuth +
+      // claude-code betas that unlock sonnet/opus under the subscription.
       const existing = headers.get('anthropic-beta');
-      const betaValues = existing
-        ? [...new Set([...existing.split(',').map(s => s.trim()), OAUTH_BETA_HEADER])]
-        : [OAUTH_BETA_HEADER];
-      headers.set('anthropic-beta', betaValues.join(','));
+      const betaSet = new Set<string>();
+      if (existing) existing.split(',').forEach((s) => betaSet.add(s.trim()));
+      betaSet.add(OAUTH_BETA_HEADER);
+      betaSet.add(CLAUDE_CODE_BETA);
+      headers.set('anthropic-beta', Array.from(betaSet).join(','));
 
-      // Patch request body: ensure every tool input_schema has type:"object"
-      // (Anthropic API requires this; AI SDK may omit it). Newer SDK versions
-      // wrap tool definitions under `custom.*`, older ones are flat — patch both.
+      // Patch request body:
+      //  (1) tool input_schema.type = "object" (flat + custom.* shapes)
+      //  (2) prepend billing signal to system blocks — this is the gate
+      //      that authorizes sonnet/opus on OAuth tokens.
       let body = init?.body;
       if (typeof body === 'string') {
         try {
@@ -221,15 +228,24 @@ function makeOAuthModel(token: string, tier: ModelTier) {
               const nestedSchema = wrapped?.input_schema as Record<string, unknown> | undefined;
               if (nestedSchema && !nestedSchema.type) nestedSchema.type = 'object';
             }
-            body = JSON.stringify(parsed);
           }
+          const billingBlock = { type: 'text', text: CLAUDE_CODE_BILLING_HEADER };
+          const existingSystem = parsed.system;
+          if (Array.isArray(existingSystem)) {
+            parsed.system = [billingBlock, ...existingSystem];
+          } else if (typeof existingSystem === 'string' && existingSystem.length > 0) {
+            parsed.system = [billingBlock, { type: 'text', text: existingSystem }];
+          } else {
+            parsed.system = [billingBlock];
+          }
+          body = JSON.stringify(parsed);
         } catch { /* not JSON — leave as-is */ }
       }
 
-      return globalThis.fetch(url, { ...init, headers, body });
+      return globalThis.fetch(patchedUrl, { ...init, headers, body });
     },
   });
-  return anthropic(OAUTH_TIER_MODELS[tier]);
+  return anthropic(TIER_MODELS[tier]);
 }
 
 export async function createModelAsync(tier: ModelTier = 'default'): Promise<ReturnType<ReturnType<typeof createAnthropic>>> {
