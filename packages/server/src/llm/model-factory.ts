@@ -15,6 +15,8 @@ import {
   type RateLimitState,
 } from './rate-limit.js';
 import { getCodexAuthStatus, type CodexAuthStatus } from './codex-auth.js';
+import { makeCodexOAuthModel } from './codex-provider.js';
+import { join } from 'path';
 
 // Per-provider utilization thresholds (0.0–1.0). When the observed
 // utilization crosses this value, the router prefers the direct-API-key
@@ -533,13 +535,16 @@ export async function createModelForProvider(
 }
 
 /**
- * Create an OpenAI model via AI SDK.
- * Falls back to Codex CLI if no API key is available.
+ * Create an OpenAI / Codex model.
+ * Preference:
+ *   1. OPENAI_API_KEY (standard API path → chat.completions model)
+ *   2. Codex ChatGPT OAuth (~/.codex/auth.json) — subscription path
+ *      via POST https://chatgpt.com/backend-api/codex/responses.
+ * Throws when neither is configured.
  */
 async function createOpenAIModel(tier: ModelTier): Promise<any> {
   const modelId = OPENAI_TIER_MODELS[tier];
 
-  // Try OPENAI_API_KEY first
   if (process.env.OPENAI_API_KEY) {
     try {
       const { createOpenAI } = await import('@ai-sdk/openai');
@@ -551,8 +556,27 @@ async function createOpenAIModel(tier: ModelTier): Promise<any> {
     }
   }
 
-  // No API key — throw so caller can fall back to Codex CLI
-  throw new Error(`No OpenAI API key. Use Codex CLI fallback for model ${modelId}.`);
+  // Codex ChatGPT OAuth subscription fallback.
+  try {
+    const raw = readFileSync(join(process.env.HOME || '/root', '.codex/auth.json'), 'utf-8');
+    const auth = JSON.parse(raw) as {
+      tokens?: { access_token?: string; account_id?: string };
+    };
+    const token = auth.tokens?.access_token;
+    const accountId = auth.tokens?.account_id;
+    if (token && accountId) {
+      return makeCodexOAuthModel(token, accountId, tier);
+    }
+  } catch {
+    // No codex auth file — fall through.
+  }
+
+  throw new Error(`No OpenAI API key or Codex OAuth. Set OPENAI_API_KEY or run \`codex login\`.`);
+}
+
+/** Direct entry for the routing layer — tries Codex OAuth first. */
+export async function createCodexModelAsync(tier: ModelTier = 'default'): Promise<any> {
+  return createOpenAIModel(tier);
 }
 
 /** Set API key at runtime (from dashboard UI). */

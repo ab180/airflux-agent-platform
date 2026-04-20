@@ -117,10 +117,16 @@ export class AssistantAgent extends BaseAgent {
    * Bypasses the CLI fallbacks — streaming requires the AI SDK path. If
    * the model can't be built, the caller should fall back to execute().
    */
-  async streamExecute(context: AgentContext): Promise<AgentStreamResult> {
-    const modelTier = (this.config.model as 'fast' | 'default' | 'powerful') || 'default';
+  async streamExecute(
+    context: AgentContext,
+    override?: { provider?: 'claude' | 'openai'; tier?: AgentConfig['model'] },
+  ): Promise<AgentStreamResult> {
+    const modelTier =
+      (override?.tier as 'fast' | 'default' | 'powerful') ||
+      (this.config.model as 'fast' | 'default' | 'powerful') ||
+      'default';
     const systemPrompt = this.buildSystemPrompt(context.sessionHistory);
-    const provider = this.config.provider || 'claude';
+    const provider = override?.provider || this.config.provider || 'claude';
     const model = await createModelForProvider(provider, modelTier);
 
     const aiTools: Record<string, { description: string; parameters: unknown; execute: (input: unknown) => Promise<unknown> }> = {};

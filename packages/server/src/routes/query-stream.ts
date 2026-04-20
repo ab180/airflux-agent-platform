@@ -1,13 +1,15 @@
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { AgentRegistry, HttpResponseChannel } from '@airflux/core';
-import type { AgentContext } from '@airflux/core';
+import type { AgentContext, ModelTier } from '@airflux/core';
 import { AssistantAgent } from '../agents/assistant-agent.js';
 import { runWithRequestContext } from '../runtime/request-context.js';
 import { resolveTrustedUserId } from '../security/trusted-user.js';
 import { recordCost } from '../llm/cost-tracker.js';
 import { toWireEvent, formatSSELine, type WireEvent } from '../streaming/stream-events.js';
 import { logger } from '../lib/logger.js';
+import { routeLLM, type ProviderAvailability } from '../llm/routing.js';
+import { getLLMStatus } from '../llm/model-factory.js';
 
 export const queryStreamRoute = new Hono();
 
@@ -60,13 +62,59 @@ queryStreamRoute.post('/query/stream', async (c) => {
     metadata: {},
   };
 
+  // Prompt-aware provider/tier routing. Looks at current Claude 5h/7d
+  // utilization + Codex auth state to decide which provider serves this
+  // request. Agent's configured provider/tier acts as a floor (Claude
+  // quota is Claude-only; Codex quota is considered when the prompt
+  // signals a coding task).
+  const llmStatus = getLLMStatus();
+  const fh = llmStatus.rateLimit?.fiveHour;
+  const sd = llmStatus.rateLimit?.sevenDay;
+  const claudeUtil = Math.max(fh?.utilization ?? 0, sd?.utilization ?? 0);
+  const claudeThreshold = llmStatus.claudeUtilizationThreshold ?? 0.95;
+  const claudeOAuthHealthy =
+    llmStatus.source === 'claude-max-oauth' && llmStatus.healthy && claudeUtil < claudeThreshold;
+  const availability: ProviderAvailability = {
+    claudeOAuth: claudeOAuthHealthy,
+    claudeApiKey: !!llmStatus.apiKeyFallbackAvailable,
+    codexOAuth: !!(llmStatus.codex && llmStatus.codex.source === 'codex-chatgpt-oauth'),
+    openaiApiKey: !!(llmStatus.codex && llmStatus.codex.source === 'openai-api-key'),
+  };
+  const agentModelTier: ModelTier =
+    ((agent.config.model as string) === 'fast' || (agent.config.model as string) === 'default' || (agent.config.model as string) === 'powerful'
+      ? (agent.config.model as ModelTier)
+      : 'default');
+  const decision = routeLLM({ question, agentModelTier, available: availability });
+  logger.info('routing decision', {
+    agent: agentName,
+    provider: decision.provider,
+    tier: decision.tier,
+    effort: decision.effort,
+    signals: decision.signals,
+    reason: decision.reason,
+  });
+
   return streamSSE(c, async (sse) => {
     const started = performance.now();
+    // Surface the routing decision to the client — chip in the UI.
+    await sse.writeSSE({
+      data: JSON.stringify({
+        type: 'routing',
+        provider: decision.provider,
+        tier: decision.tier,
+        effort: decision.effort,
+        reason: decision.reason,
+      }),
+    });
     let streamResult;
     try {
       streamResult = await runWithRequestContext(
         { userId, sessionId, source: 'api', agentName },
-        () => agent.streamExecute(context),
+        () =>
+          agent.streamExecute(context, {
+            provider: decision.provider === 'codex' ? 'openai' : 'claude',
+            tier: decision.tier,
+          }),
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'unknown error';
