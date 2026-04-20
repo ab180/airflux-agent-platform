@@ -8,6 +8,18 @@ import { isCodexCliAvailable } from './codex-cli-provider.js';
 import { logger } from '../lib/logger.js';
 import { getEnvironment, type CredentialStrategy } from '../runtime/environment.js';
 import { evaluateLLMHealth, type LLMHealthResult } from './health.js';
+import {
+  recordRateLimit,
+  getRateLimitState,
+  shouldPreferApiKey,
+  type RateLimitState,
+} from './rate-limit.js';
+
+// 0.0–1.0. When observed 5h utilization >= this, createModelAsync prefers
+// ANTHROPIC_API_KEY (if set) over the OAuth path — keeps headroom for the
+// user's interactive Claude Code usage on the same subscription. Override
+// with AIRFLUX_OAUTH_UTIL_THRESHOLD.
+const OAUTH_UTIL_THRESHOLD = Number(process.env.AIRFLUX_OAUTH_UTIL_THRESHOLD ?? 0.8);
 
 export function getModelCredentialSource(): CredentialStrategy {
   return getEnvironment().credentialStrategy;
@@ -242,7 +254,10 @@ function makeOAuthModel(token: string, tier: ModelTier) {
         } catch { /* not JSON — leave as-is */ }
       }
 
-      return globalThis.fetch(patchedUrl, { ...init, headers, body });
+      const response = await globalThis.fetch(patchedUrl, { ...init, headers, body });
+      // Snapshot rate-limit headers — shared with dashboard + fallback router.
+      try { recordRateLimit(response.headers); } catch { /* best-effort */ }
+      return response;
     },
   });
   return anthropic(TIER_MODELS[tier]);
@@ -265,26 +280,36 @@ export async function createModelAsync(tier: ModelTier = 'default'): Promise<Ret
     );
   }
 
-  // 1. Try direct API key first
+  // Routing policy: prefer Claude Max OAuth (free under subscription) until
+  // observed utilization crosses AIRFLUX_OAUTH_UTIL_THRESHOLD, then fall
+  // back to ANTHROPIC_API_KEY (if set) so the user's interactive Claude
+  // Code usage keeps headroom. If no API key is configured, OAuth is used
+  // regardless — the alternative is failing.
+  const apiKeyAvailable = !!process.env.ANTHROPIC_API_KEY || !!cachedApiKey;
+  const preferApiKey = apiKeyAvailable && shouldPreferApiKey(OAUTH_UTIL_THRESHOLD);
+  if (preferApiKey) {
+    try {
+      const apiKey = getAnthropicApiKey();
+      keySource = 'env:ANTHROPIC_API_KEY (oauth-util-threshold)';
+      return createAnthropic({ apiKey })(TIER_MODELS[tier]);
+    } catch {
+      // Fall through to OAuth
+    }
+  }
+
+  const oauthToken = await getFreshOAuthToken();
+  if (oauthToken) {
+    keySource = 'claude-max-oauth';
+    return makeOAuthModel(oauthToken, tier);
+  }
+
+  // OAuth unavailable → try direct API key as last resort on the Claude path.
   try {
     const apiKey = getAnthropicApiKey();
     keySource = 'env:ANTHROPIC_API_KEY';
     return createAnthropic({ apiKey })(TIER_MODELS[tier]);
   } catch {
-    // no API key
-  }
-
-  // 2. Claude Max OAuth from credentials file is preferred — it's
-  //    refreshable and locally verifiable. We try this BEFORE the static
-  //    ANTHROPIC_AUTH_TOKEN env var so a long-expired env token doesn't
-  //    shadow a still-valid (or refreshable) credentials.json.
-  //    Uses makeOAuthModel so the tool-schema body patch (required by
-  //    Anthropic — tools.*.input_schema.type must be "object") matches
-  //    the env-token path. Without the patch, streaming with tools 400s.
-  const oauthToken = await getFreshOAuthToken();
-  if (oauthToken) {
-    keySource = 'claude-max-oauth';
-    return makeOAuthModel(oauthToken, tier);
+    // no API key either
   }
 
   // 3. Last resort: ANTHROPIC_AUTH_TOKEN env var. Used only if the
@@ -345,16 +370,30 @@ export interface LLMStatus {
   hoursExpired?: number;
   verified: boolean;
   hint?: string;
+  /** Latest observed Claude Max OAuth subscription quota usage. */
+  rateLimit?: RateLimitState | null;
+  /** Threshold (0-1) at which the server prefers ANTHROPIC_API_KEY over OAuth. */
+  oauthUtilizationThreshold?: number;
+  /** True if an API key is available to fall back to when OAuth saturates. */
+  apiKeyFallbackAvailable?: boolean;
 }
 
 export function getLLMStatus(): LLMStatus {
   const providers: string[] = [];
   const health = getLLMHealth();
+  const rateLimit = getRateLimitState();
+  const apiKeyFallbackAvailable = !!process.env.ANTHROPIC_API_KEY || !!cachedApiKey;
+  const common = {
+    rateLimit,
+    oauthUtilizationThreshold: OAUTH_UTIL_THRESHOLD,
+    apiKeyFallbackAvailable,
+  };
 
   try {
     getAnthropicApiKey();
     providers.push('anthropic');
     return {
+      ...common,
       available: true,
       source: keySource,
       providers,
@@ -369,6 +408,7 @@ export function getLLMStatus(): LLMStatus {
   if (creds) {
     providers.push('claude-max-oauth');
     return {
+      ...common,
       available: !health.expired, // expired creds → available=false (actionable)
       source: health.expired
         ? 'claude-max-oauth (expired)'
@@ -386,6 +426,7 @@ export function getLLMStatus(): LLMStatus {
   if (process.env.ANTHROPIC_AUTH_TOKEN) {
     providers.push('claude-max-oauth');
     return {
+      ...common,
       available: true,
       source: 'env:ANTHROPIC_AUTH_TOKEN',
       providers,
@@ -399,6 +440,7 @@ export function getLLMStatus(): LLMStatus {
   if (isClaudeCliAvailable()) {
     providers.push('claude-cli');
     return {
+      ...common,
       available: true,
       source: 'claude-cli',
       providers,
@@ -411,6 +453,7 @@ export function getLLMStatus(): LLMStatus {
   if (process.env.OPENAI_API_KEY) {
     providers.push('openai');
     return {
+      ...common,
       available: true,
       source: 'env:OPENAI_API_KEY',
       providers,
@@ -423,6 +466,7 @@ export function getLLMStatus(): LLMStatus {
   if (isCodexCliAvailable()) {
     providers.push('codex-cli');
     return {
+      ...common,
       available: true,
       source: 'codex-cli',
       providers,
@@ -433,6 +477,7 @@ export function getLLMStatus(): LLMStatus {
   }
 
   return {
+    ...common,
     available: false,
     source: 'none',
     providers,

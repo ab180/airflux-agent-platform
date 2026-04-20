@@ -22,6 +22,9 @@ healthRoute.get('/health', (c) => {
       expired: llm.expired,
       hoursExpired: llm.hoursExpired,
       hint: llm.hint,
+      rateLimit: llm.rateLimit,
+      oauthUtilizationThreshold: llm.oauthUtilizationThreshold,
+      apiKeyFallbackAvailable: llm.apiKeyFallbackAvailable,
     },
   });
 });
