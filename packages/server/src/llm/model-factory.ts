@@ -193,15 +193,19 @@ function makeOAuthModel(token: string, tier: ModelTier) {
       headers.set('anthropic-beta', betaValues.join(','));
 
       // Patch request body: ensure every tool input_schema has type:"object"
-      // (Anthropic API requires this; older SDK versions may omit it)
+      // (Anthropic API requires this; AI SDK may omit it). Newer SDK versions
+      // wrap tool definitions under `custom.*`, older ones are flat — patch both.
       let body = init?.body;
       if (typeof body === 'string') {
         try {
           const parsed = JSON.parse(body) as Record<string, unknown>;
           if (Array.isArray(parsed.tools)) {
             for (const t of parsed.tools as Array<Record<string, unknown>>) {
-              const schema = t.input_schema as Record<string, unknown> | undefined;
-              if (schema && !schema.type) schema.type = 'object';
+              const flatSchema = t.input_schema as Record<string, unknown> | undefined;
+              if (flatSchema && !flatSchema.type) flatSchema.type = 'object';
+              const wrapped = t.custom as Record<string, unknown> | undefined;
+              const nestedSchema = wrapped?.input_schema as Record<string, unknown> | undefined;
+              if (nestedSchema && !nestedSchema.type) nestedSchema.type = 'object';
             }
             body = JSON.stringify(parsed);
           }
@@ -244,21 +248,13 @@ export async function createModelAsync(tier: ModelTier = 'default'): Promise<Ret
   //    refreshable and locally verifiable. We try this BEFORE the static
   //    ANTHROPIC_AUTH_TOKEN env var so a long-expired env token doesn't
   //    shadow a still-valid (or refreshable) credentials.json.
+  //    Uses makeOAuthModel so the tool-schema body patch (required by
+  //    Anthropic — tools.*.input_schema.type must be "object") matches
+  //    the env-token path. Without the patch, streaming with tools 400s.
   const oauthToken = await getFreshOAuthToken();
   if (oauthToken) {
     keySource = 'claude-max-oauth';
-    const token = oauthToken;
-    const anthropic = createAnthropic({
-      apiKey: 'placeholder',
-      fetch: async (url: string | Request | URL, init?: RequestInit) => {
-        const headers = new Headers(init?.headers);
-        headers.delete('x-api-key');
-        headers.set('Authorization', `Bearer ${token}`);
-        headers.set('anthropic-beta', OAUTH_BETA_HEADER);
-        return globalThis.fetch(url, { ...init, headers });
-      },
-    });
-    return anthropic(TIER_MODELS[tier]);
+    return makeOAuthModel(oauthToken, tier);
   }
 
   // 3. Last resort: ANTHROPIC_AUTH_TOKEN env var. Used only if the
