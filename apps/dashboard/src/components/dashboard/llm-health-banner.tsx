@@ -12,6 +12,13 @@ interface RateLimitState {
   sevenDay?: RateLimitWindow;
   observedAt?: number;
 }
+interface CodexAuth {
+  available: boolean;
+  source: string;
+  accountId?: string;
+  daysSinceRefresh?: number;
+  hint?: string;
+}
 interface LLMHealth {
   available: boolean;
   healthy: boolean;
@@ -23,6 +30,7 @@ interface LLMHealth {
   rateLimit?: RateLimitState | null;
   oauthUtilizationThreshold?: number;
   apiKeyFallbackAvailable?: boolean;
+  codex?: CodexAuth;
 }
 
 interface HealthResponse {
@@ -63,9 +71,11 @@ export function LLMHealthBanner() {
   const sd = state.rateLimit?.sevenDay;
   const hasQuotaInfo = !!(fh?.utilization !== undefined || sd?.utilization !== undefined);
   const credentialIssue = !state.healthy || (state.healthy && !state.verified && !!state.hint);
+  const codex = state.codex;
+  const hasCodex = !!codex;
 
   // Nothing actionable and no quota to show → don't render anything.
-  if (!credentialIssue && !hasQuotaInfo) return null;
+  if (!credentialIssue && !hasQuotaInfo && !hasCodex) return null;
 
   // Severity of the credential issue (ignored when there isn't one).
   const severity = !state.healthy ? "error" : credentialIssue ? "warn" : "info";
@@ -125,6 +135,24 @@ export function LLMHealthBanner() {
             임계값 {Math.round(threshold * 100)}% ·{" "}
             {fallbackReady ? "초과 시 API 키로 자동 전환" : "API 키 미설정 — OAuth만 사용"}
           </span>
+        </div>
+      )}
+      {hasCodex && codex && (
+        <div className={`${credentialIssue || hasQuotaInfo ? "mt-2 border-t border-current/10 pt-2" : ""} flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]`}>
+          <span className="font-mono text-[10px] opacity-70">Codex / OpenAI</span>
+          <span className={`inline-flex items-center gap-1.5 ${codex.available ? "" : "opacity-60"}`}>
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${codex.available ? "bg-emerald-500" : "bg-zinc-600"}`}
+              aria-hidden
+            />
+            <span className="font-mono text-[10px]">{codex.source}</span>
+          </span>
+          {typeof codex.daysSinceRefresh === "number" && (
+            <span className="font-mono text-[10px] opacity-60">
+              {codex.daysSinceRefresh}일 전 갱신
+            </span>
+          )}
+          {codex.hint && <span className="opacity-80">{codex.hint}</span>}
         </div>
       )}
     </div>

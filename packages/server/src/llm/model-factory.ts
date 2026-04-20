@@ -14,6 +14,7 @@ import {
   shouldPreferApiKey,
   type RateLimitState,
 } from './rate-limit.js';
+import { getCodexAuthStatus, type CodexAuthStatus } from './codex-auth.js';
 
 // 0.0–1.0. When observed 5h utilization >= this, createModelAsync prefers
 // ANTHROPIC_API_KEY (if set) over the OAuth path — keeps headroom for the
@@ -376,6 +377,8 @@ export interface LLMStatus {
   oauthUtilizationThreshold?: number;
   /** True if an API key is available to fall back to when OAuth saturates. */
   apiKeyFallbackAvailable?: boolean;
+  /** Codex / OpenAI auth state so the dashboard renders both providers. */
+  codex?: CodexAuthStatus;
 }
 
 export function getLLMStatus(): LLMStatus {
@@ -387,6 +390,7 @@ export function getLLMStatus(): LLMStatus {
     rateLimit,
     oauthUtilizationThreshold: OAUTH_UTIL_THRESHOLD,
     apiKeyFallbackAvailable,
+    codex: getCodexAuthStatus(),
   };
 
   try {
