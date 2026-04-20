@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   toWireEvent,
   formatSSELine,
+  extractErrorMessage,
   type WireEvent,
 } from '../streaming/stream-events.js';
 
@@ -85,6 +86,52 @@ describe('toWireEvent', () => {
     expect(toWireEvent({ type: 'finish-step' } as any)).toBeNull();
     expect(toWireEvent({ type: 'tool-input-start' } as any)).toBeNull();
     expect(toWireEvent({ type: 'tool-input-delta' } as any)).toBeNull();
+  });
+});
+
+describe('extractErrorMessage', () => {
+  it('peels AI SDK RetryError → APICallError to find rate_limit', () => {
+    const err = {
+      message: 'Failed after 3 attempts. Last error: Error',
+      lastError: {
+        message: 'Error',
+        statusCode: 429,
+        responseBody: JSON.stringify({
+          type: 'error',
+          error: { type: 'rate_limit_error', message: 'Error' },
+        }),
+      },
+    };
+    expect(extractErrorMessage(err)).toBe('rate_limit_error (429)');
+  });
+
+  it('includes readable message when API provides one beyond "Error"', () => {
+    const err = {
+      lastError: {
+        statusCode: 401,
+        responseBody: JSON.stringify({
+          error: { type: 'authentication_error', message: 'Invalid credentials' },
+        }),
+      },
+    };
+    expect(extractErrorMessage(err)).toBe('authentication_error (401): Invalid credentials');
+  });
+
+  it('returns statusCode when responseBody is non-JSON', () => {
+    const err = {
+      lastError: { statusCode: 502, responseBody: 'Bad Gateway HTML' },
+    };
+    expect(extractErrorMessage(err)).toBe('API error 502');
+  });
+
+  it('falls back to Error.message when no API info present', () => {
+    const err = new Error('network reset');
+    expect(extractErrorMessage(err)).toBe('network reset');
+  });
+
+  it('handles null / undefined safely', () => {
+    expect(extractErrorMessage(null)).toBe('unknown error');
+    expect(extractErrorMessage(undefined)).toBe('unknown error');
   });
 });
 

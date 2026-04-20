@@ -19,6 +19,20 @@ const TIER_MODELS: Record<ModelTier, string> = {
   powerful: 'claude-opus-4-6',
 };
 
+/**
+ * Claude Max OAuth (`anthropic-beta: oauth-2025-04-20`) currently only
+ * authorizes Haiku. sonnet/opus return 429 rate_limit_error with the
+ * opaque message "Error" — it's actually a scope/permission denial that
+ * Anthropic packages as a throttle code. Without a direct ANTHROPIC_API_KEY
+ * we must downgrade every tier to Haiku; otherwise first request fails.
+ * Verified empirically 2026-04-20 against api.anthropic.com directly.
+ */
+const OAUTH_TIER_MODELS: Record<ModelTier, string> = {
+  fast: 'claude-haiku-4-5-20251001',
+  default: 'claude-haiku-4-5-20251001',
+  powerful: 'claude-haiku-4-5-20251001',
+};
+
 const OPENAI_TIER_MODELS: Record<ModelTier, string> = {
   fast: 'gpt-4.1-mini',
   default: 'gpt-5.4',
@@ -215,7 +229,7 @@ function makeOAuthModel(token: string, tier: ModelTier) {
       return globalThis.fetch(url, { ...init, headers, body });
     },
   });
-  return anthropic(TIER_MODELS[tier]);
+  return anthropic(OAUTH_TIER_MODELS[tier]);
 }
 
 export async function createModelAsync(tier: ModelTier = 'default'): Promise<ReturnType<ReturnType<typeof createAnthropic>>> {

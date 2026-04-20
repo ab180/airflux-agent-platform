@@ -80,9 +80,8 @@ export function toWireEvent(part: FullStreamPart): WireEvent | null {
       };
     }
     case 'error': {
-      const err = part.error;
-      const message = err instanceof Error ? err.message : String(err ?? 'unknown error');
-      return { type: 'error', message };
+      const err = part.error as unknown;
+      return { type: 'error', message: extractErrorMessage(err) };
     }
     default:
       return null;
@@ -91,4 +90,52 @@ export function toWireEvent(part: FullStreamPart): WireEvent | null {
 
 export function formatSSELine(event: WireEvent): string {
   return `data: ${JSON.stringify(event)}\n\n`;
+}
+
+/**
+ * Best-effort human-readable error message from an AI SDK error object.
+ * AI SDK wraps API errors in RetryError → APICallError. The outer
+ * `.message` is often "Failed after N attempts. Last error: Error",
+ * which hides the actual HTTP status + response body. This helper peels
+ * the onion and surfaces 429 rate_limit / 401 auth / 529 overloaded etc.
+ */
+export function extractErrorMessage(err: unknown): string {
+  if (err == null) return 'unknown error';
+  const e = err as Record<string, unknown>;
+
+  // Look for the deepest lastError → responseBody with a JSON `error` field.
+  const chain: Record<string, unknown>[] = [e];
+  let cursor: Record<string, unknown> | undefined = e;
+  for (let i = 0; i < 5 && cursor; i++) {
+    const next: Record<string, unknown> | undefined =
+      (cursor.lastError as Record<string, unknown> | undefined) ??
+      (cursor.cause as Record<string, unknown> | undefined);
+    if (!next) break;
+    chain.push(next);
+    cursor = next;
+  }
+
+  for (const node of chain) {
+    const rb = node.responseBody;
+    if (typeof rb === 'string' && rb.length > 0) {
+      try {
+        const parsed = JSON.parse(rb) as { error?: { type?: string; message?: string } };
+        const apiErr = parsed.error;
+        if (apiErr?.type || apiErr?.message) {
+          const status = typeof node.statusCode === 'number' ? ` (${node.statusCode})` : '';
+          const msg = apiErr.message && apiErr.message !== 'Error' ? `: ${apiErr.message}` : '';
+          return `${apiErr.type ?? 'api_error'}${status}${msg}`;
+        }
+      } catch {
+        /* not JSON — fall through */
+      }
+    }
+    if (typeof node.statusCode === 'number') {
+      return `API error ${node.statusCode}`;
+    }
+  }
+
+  const fallback =
+    err instanceof Error ? err.message : typeof err === 'string' ? err : String(err);
+  return fallback || 'unknown error';
 }
