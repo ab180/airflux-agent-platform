@@ -28,6 +28,7 @@ healthRoute.get('/health', (c) => {
       codexUtilizationThreshold: llm.codexUtilizationThreshold,
       apiKeyFallbackAvailable: llm.apiKeyFallbackAvailable,
       codex: llm.codex,
+      codexThrottle: llm.codexThrottle,
     },
   });
 });

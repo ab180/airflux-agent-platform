@@ -14,6 +14,8 @@ import {
   recordRateLimit,
   // Reusing the same store shape; kept provider-agnostic for now.
 } from './rate-limit.js';
+import { markCodexThrottled, clearCodexThrottle } from './codex-throttle.js';
+import { logger } from '../lib/logger.js';
 
 // Model catalog used when routing picks Codex.
 // Conservative mapping — effort tier comes from the router, model stays
@@ -126,6 +128,28 @@ export function makeCodexOAuthModel(
 
       const response = await globalThis.fetch(url, { ...init, headers, body });
       try { recordRateLimit(response.headers); } catch { /* best-effort */ }
+
+      // Throttle policy: 429 / 402 quota-exceeded → mark Codex unavailable
+      // so subsequent routes steer to Claude until retry window elapses.
+      // On a successful response, proactively clear any stale throttle.
+      if (response.status === 429 || response.status === 402) {
+        const retryAfterHdr = response.headers.get('retry-after');
+        const retryAfterSec = retryAfterHdr && /^\d+$/.test(retryAfterHdr)
+          ? parseInt(retryAfterHdr, 10)
+          : undefined;
+        markCodexThrottled({
+          reason: `http_${response.status}`,
+          retryAfterSec,
+          now: Date.now(),
+        });
+        logger.warn('codex throttled', {
+          status: response.status,
+          retryAfterSec: retryAfterSec ?? 'default-5min',
+        });
+      } else if (response.ok) {
+        clearCodexThrottle();
+      }
+
       return response;
     },
   });

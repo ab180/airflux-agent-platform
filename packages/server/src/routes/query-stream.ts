@@ -10,6 +10,7 @@ import { toWireEvent, formatSSELine, type WireEvent } from '../streaming/stream-
 import { logger } from '../lib/logger.js';
 import { routeLLM, type ProviderAvailability } from '../llm/routing.js';
 import { getLLMStatus } from '../llm/model-factory.js';
+import { isCodexThrottled } from '../llm/codex-throttle.js';
 
 export const queryStreamRoute = new Hono();
 
@@ -74,10 +75,15 @@ queryStreamRoute.post('/query/stream', async (c) => {
   const claudeThreshold = llmStatus.claudeUtilizationThreshold ?? 0.95;
   const claudeOAuthHealthy =
     llmStatus.source === 'claude-max-oauth' && llmStatus.healthy && claudeUtil < claudeThreshold;
+  // Codex availability excludes throttled state — once we see 429 we
+  // steer away until the cool-down window elapses.
+  const codexThrottled = isCodexThrottled(Date.now());
   const availability: ProviderAvailability = {
     claudeOAuth: claudeOAuthHealthy,
     claudeApiKey: !!llmStatus.apiKeyFallbackAvailable,
-    codexOAuth: !!(llmStatus.codex && llmStatus.codex.source === 'codex-chatgpt-oauth'),
+    codexOAuth:
+      !!(llmStatus.codex && llmStatus.codex.source === 'codex-chatgpt-oauth') &&
+      !codexThrottled,
     openaiApiKey: !!(llmStatus.codex && llmStatus.codex.source === 'openai-api-key'),
   };
   const agentModelTier: ModelTier =

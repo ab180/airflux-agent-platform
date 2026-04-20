@@ -16,6 +16,7 @@ import {
 } from './rate-limit.js';
 import { getCodexAuthStatus, type CodexAuthStatus } from './codex-auth.js';
 import { makeCodexOAuthModel } from './codex-provider.js';
+import { getCodexThrottleState, type CodexThrottleState } from './codex-throttle.js';
 import { join } from 'path';
 
 // Per-provider utilization thresholds (0.0–1.0). When the observed
@@ -404,6 +405,8 @@ export interface LLMStatus {
   apiKeyFallbackAvailable?: boolean;
   /** Codex / OpenAI auth state so the dashboard renders both providers. */
   codex?: CodexAuthStatus;
+  /** Current Codex throttle state — set when a 429 was observed recently. */
+  codexThrottle?: CodexThrottleState | null;
 }
 
 export function getLLMStatus(): LLMStatus {
@@ -418,6 +421,7 @@ export function getLLMStatus(): LLMStatus {
     codexUtilizationThreshold: CODEX_UTIL_THRESHOLD,
     apiKeyFallbackAvailable,
     codex: getCodexAuthStatus(),
+    codexThrottle: getCodexThrottleState(),
   };
 
   try {
