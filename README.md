@@ -181,3 +181,22 @@ docker run -p 3000:3000 -e ANTHROPIC_API_KEY=sk-ant-... airflux
 | Slack 연동 | webhook 수신, 서명 검증, 스레드 세션 |
 
 자세한 설계는 `docs/design/` 참조. 읽는 순서는 `CLAUDE.md` 참고.
+
+## 로컬 개발 (airops CLI)
+
+Postgres(Docker) + server + dashboard 를 한 번에 띄우고 끕니다.
+
+```bash
+npm install
+npx airops start         # foreground, Ctrl+C 로 일괄 종료
+npx airops status        # 현재 URL/포트 확인
+npx airops db url        # connection URL 을 GUI 에 붙여넣기용으로 출력
+npx airops db psql       # airops-pg 에 즉시 psql 세션
+npx airops stop          # 서비스 중단 (데이터 유지)
+npx airops stop --reset  # 볼륨까지 삭제 (데이터 삭제, 확인 프롬프트)
+```
+
+`airops start` 는:
+- `airops-pg` 이름의 postgres:16-alpine 컨테이너를 재사용/재시작/생성 (`airops-pgdata` 볼륨 영속)
+- Server 는 3100-3199, Dashboard 는 3200-3299 범위에서 빈 포트 자동 선점
+- macOS 에서는 Claude OAuth 토큰을 Keychain 에서 직접 읽어 파일 sync 가 필요 없음
