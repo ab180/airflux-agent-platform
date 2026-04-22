@@ -13,3 +13,4 @@ data/
 *.db-shm
 .gstack/
 .DS_Store
+.airops/
