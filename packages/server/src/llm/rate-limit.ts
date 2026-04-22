@@ -86,16 +86,22 @@ export function resetRateLimitForTest(): void {
  *
  * true when:
  *   - the most recent response reported status === 'throttled', OR
- *   - 5h utilization crossed the threshold (default caller-supplied).
- * Never true before we've seen any response — caller decides the bootstrap
- * behavior (typically: start on OAuth).
+ *   - a numeric threshold was supplied AND 5h utilization crossed it.
+ *
+ * Threshold is OPTIONAL — pass undefined to defer to observed throttle
+ * signal only (availability-first routing). Never true before we've seen
+ * any response; caller decides the bootstrap behavior (typically OAuth).
  */
-export function shouldPreferApiKey(utilizationThreshold: number): boolean {
+export function shouldPreferApiKey(utilizationThreshold: number | undefined): boolean {
   if (!state) return false;
   const fh = state.fiveHour;
   if (!fh) return false;
   if (fh.status === 'throttled') return true;
-  if (typeof fh.utilization === 'number' && fh.utilization >= utilizationThreshold) {
+  if (
+    typeof utilizationThreshold === 'number' &&
+    typeof fh.utilization === 'number' &&
+    fh.utilization >= utilizationThreshold
+  ) {
     return true;
   }
   return false;

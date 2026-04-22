@@ -41,12 +41,16 @@ export class AssistantAgent extends BaseAgent {
         throw new Error('No LLM available. Set API key or run `claude login` / `codex login`.');
       }
 
-      // Convert registered tools to AI SDK tool format
-      const aiTools: Record<string, { description: string; parameters: unknown; execute: (input: unknown) => Promise<unknown> }> = {};
+      // Convert registered tools to AI SDK tool format.
+      // AI SDK v6 renamed the schema field `parameters` → `inputSchema`.
+      // Before this fix, v6 ignored the old `parameters` key, passed no
+      // schema to the provider, and every tool-call came back with
+      // input:{} because the LLM couldn't see what arguments to produce.
+      const aiTools: Record<string, { description: string; inputSchema: unknown; execute: (input: unknown) => Promise<unknown> }> = {};
       for (const [name, t] of Object.entries(this.tools)) {
         aiTools[name] = {
           description: t.description,
-          parameters: t.inputSchema,
+          inputSchema: t.inputSchema,
           execute: async (input: unknown) => t.execute(input),
         };
       }
@@ -129,11 +133,12 @@ export class AssistantAgent extends BaseAgent {
     const provider = override?.provider || this.config.provider || 'claude';
     const model = await createModelForProvider(provider, modelTier);
 
-    const aiTools: Record<string, { description: string; parameters: unknown; execute: (input: unknown) => Promise<unknown> }> = {};
+    // AI SDK v6: schema field is `inputSchema`, not `parameters`.
+    const aiTools: Record<string, { description: string; inputSchema: unknown; execute: (input: unknown) => Promise<unknown> }> = {};
     for (const [name, t] of Object.entries(this.tools)) {
       aiTools[name] = {
         description: t.description,
-        parameters: t.inputSchema,
+        inputSchema: t.inputSchema,
         execute: async (input: unknown) => t.execute(input),
       };
     }

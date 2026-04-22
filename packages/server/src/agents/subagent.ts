@@ -76,12 +76,13 @@ async function executeSubagent(config: SubagentConfig, query: string): Promise<u
     // Try AI SDK first — enables real tool calling
     const model = await createModelAsync(modelTier as 'fast' | 'default' | 'powerful');
 
-    // Convert tools to AI SDK format (same pattern as assistant-agent.ts)
-    const aiTools: Record<string, { description: string; parameters: unknown; execute: (input: unknown) => Promise<unknown> }> = {};
+    // Convert tools to AI SDK format (same pattern as assistant-agent.ts).
+    // AI SDK v6: schema field is `inputSchema`, not `parameters`.
+    const aiTools: Record<string, { description: string; inputSchema: unknown; execute: (input: unknown) => Promise<unknown> }> = {};
     for (const [name, t] of Object.entries(subagentTools)) {
       aiTools[name] = {
         description: t.description,
-        parameters: t.inputSchema,
+        inputSchema: t.inputSchema,
         execute: async (input: unknown) => t.execute(input),
       };
     }

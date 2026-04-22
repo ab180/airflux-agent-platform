@@ -11,6 +11,7 @@ import { logger } from '../lib/logger.js';
 import { routeLLM, type ProviderAvailability } from '../llm/routing.js';
 import { getLLMStatus } from '../llm/model-factory.js';
 import { isCodexThrottled } from '../llm/codex-throttle.js';
+import { isClaudeOAuthThrottled } from '../llm/claude-throttle.js';
 
 export const queryStreamRoute = new Hono();
 
@@ -63,27 +64,55 @@ queryStreamRoute.post('/query/stream', async (c) => {
     metadata: {},
   };
 
-  // Prompt-aware provider/tier routing. Looks at current Claude 5h/7d
-  // utilization + Codex auth state to decide which provider serves this
-  // request. Agent's configured provider/tier acts as a floor (Claude
-  // quota is Claude-only; Codex quota is considered when the prompt
-  // signals a coding task).
+  // Prompt-aware provider/tier routing. Availability-first: a provider
+  // is "available" when (a) the credential is usable and (b) we haven't
+  // observed a real throttle signal from it recently. A numeric utilization
+  // threshold is an OPT-IN extra gate (env AIRFLUX_*_UTIL_THRESHOLD) for
+  // users who want to steer away before the quota actually runs out.
   const llmStatus = getLLMStatus();
+  const now = Date.now();
+  const claudeThrottled = isClaudeOAuthThrottled(now);
+  const codexThrottled = isCodexThrottled(now);
+
+  // Optional utilization threshold gates (only active when user sets env).
   const fh = llmStatus.rateLimit?.fiveHour;
   const sd = llmStatus.rateLimit?.sevenDay;
   const claudeUtil = Math.max(fh?.utilization ?? 0, sd?.utilization ?? 0);
-  const claudeThreshold = llmStatus.claudeUtilizationThreshold ?? 0.95;
-  const claudeOAuthHealthy =
-    llmStatus.source === 'claude-max-oauth' && llmStatus.healthy && claudeUtil < claudeThreshold;
-  // Codex availability excludes throttled state — once we see 429 we
-  // steer away until the cool-down window elapses.
-  const codexThrottled = isCodexThrottled(Date.now());
+  const claudeThr = llmStatus.claudeUtilizationThreshold;
+  const claudeCrossedOptThreshold =
+    typeof claudeThr === 'number' && claudeUtil >= claudeThr;
+  // Codex has no live utilization stream today (ChatGPT Codex backend
+  // doesn't ship Anthropic-style headers). The optional threshold is
+  // wired for symmetry — it won't fire until utilization tracking exists.
+  const codexUtil = 0;
+  const codexThr = llmStatus.codexUtilizationThreshold;
+  const codexCrossedOptThreshold =
+    typeof codexThr === 'number' && codexUtil >= codexThr;
+
+  // Claude is usable via any of these credential sources. The model-factory
+  // picks the best path at request time (credentials.json > env token >
+  // API key on fallback). Previously this was restricted to OAuth only,
+  // which caused the router to avoid Claude entirely when credentials.json
+  // was missing (e.g. macOS Keychain not yet synced to the container) even
+  // though an env token was available. Broadening here lets routing try
+  // Claude; if the env token turns out stale, the request fails with a
+  // clear error instead of silently steering every prompt to Codex.
+  const claudeCredentialPresent =
+    llmStatus.source === 'claude-max-oauth'
+    || llmStatus.source === 'env:ANTHROPIC_AUTH_TOKEN'
+    || llmStatus.source === 'env:ANTHROPIC_API_KEY'
+    || llmStatus.source.startsWith('env:ANTHROPIC_API_KEY');
   const availability: ProviderAvailability = {
-    claudeOAuth: claudeOAuthHealthy,
+    claudeOAuth:
+      claudeCredentialPresent
+      && llmStatus.healthy
+      && !claudeThrottled
+      && !claudeCrossedOptThreshold,
     claudeApiKey: !!llmStatus.apiKeyFallbackAvailable,
     codexOAuth:
-      !!(llmStatus.codex && llmStatus.codex.source === 'codex-chatgpt-oauth') &&
-      !codexThrottled,
+      !!(llmStatus.codex && llmStatus.codex.source === 'codex-chatgpt-oauth')
+      && !codexThrottled
+      && !codexCrossedOptThreshold,
     openaiApiKey: !!(llmStatus.codex && llmStatus.codex.source === 'openai-api-key'),
   };
   const agentModelTier: ModelTier =

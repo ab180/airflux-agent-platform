@@ -1,5 +1,13 @@
 # Agent Routing Rules
 # 키워드 매칭으로 빠르게 라우팅, 매칭 실패 시 chief-agent가 처리
+#
+# LLM provider/tier 라우팅 (query-stream.ts)는 기본적으로 "availability-first"
+# 정책을 사용한다 — Claude/Codex가 실제 throttle 신호(HTTP 429/402 또는
+# `anthropic-ratelimit-unified-*-status: throttled` 헤더)를 보일 때만 우회.
+# 보수적으로 미리 전환하고 싶다면 다음 env 변수로 옵션 threshold 활성화:
+#   AIRFLUX_CLAUDE_UTIL_THRESHOLD (0.0~1.0, 기본 없음)
+#   AIRFLUX_CODEX_UTIL_THRESHOLD  (0.0~1.0, 기본 없음)
+# (향후 이 파일에 `thresholds:` 섹션으로 YAML 제어를 옮길 수 있음)
 
 llmRouterEnabled: true
 

@@ -29,6 +29,57 @@ export const CODEX_TIER_MODELS: Record<ModelTier, string> = {
 
 const CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex';
 
+/**
+ * When `store: false` is sent to ChatGPT Codex's Responses API, AI SDK
+ * still emits `{ type: "item_reference", id: "fc_…" }` entries pointing
+ * at previous-turn `function_call` items the server no longer has. That
+ * yields `invalid_request_error (404): Item with id 'fc_…' not found`.
+ *
+ * We drop those references and collapse any orphaned `function_call_output`
+ * siblings into an assistant message so the model still sees the tool
+ * results textually — multi-step tool loops complete without leaking
+ * server-scoped ids into the request.
+ */
+function flattenStoredItemReferences(parsed: Record<string, unknown>): boolean {
+  const input = parsed.input;
+  if (!Array.isArray(input)) return false;
+  const items = input as Array<Record<string, unknown>>;
+  let hasReference = false;
+  let hasOrphanOutput = false;
+  const outputs: Array<{ call_id?: string; output?: unknown }> = [];
+  const kept: Array<Record<string, unknown>> = [];
+  for (const item of items) {
+    if (item.type === 'item_reference') { hasReference = true; continue; }
+    if (item.type === 'function_call_output') {
+      hasOrphanOutput = true;
+      outputs.push(item as { call_id?: string; output?: unknown });
+      continue;
+    }
+    kept.push(item);
+  }
+  if (!hasReference && !hasOrphanOutput) return false;
+  if (outputs.length > 0) {
+    const summaryLines = outputs.map((o, i) => {
+      const outStr = typeof o.output === 'string' ? o.output : JSON.stringify(o.output ?? '');
+      const id = o.call_id ?? `#${i + 1}`;
+      return `- [${id}] ${outStr}`;
+    });
+    kept.push({
+      role: 'assistant',
+      content: [
+        {
+          type: 'output_text',
+          text:
+            '(이전 턴에서 다음 도구를 호출하여 결과를 얻었습니다. 이 결과들을 바탕으로 답변을 이어가세요.)\n\n' +
+            summaryLines.join('\n'),
+        },
+      ],
+    });
+  }
+  parsed.input = kept;
+  return true;
+}
+
 /** Force OpenAI function-tool parameter schemas to have type:"object". */
 function patchTools(parsed: Record<string, unknown>): boolean {
   const tools = parsed.tools;
@@ -116,11 +167,13 @@ export function makeCodexOAuthModel(
             // conversations — always force false.
             parsed.store = false;
             patchTools(parsed);
+            flattenStoredItemReferences(parsed);
             body = JSON.stringify(parsed);
           } else {
             let touched = false;
             if (parsed.store !== false) { parsed.store = false; touched = true; }
             if (patchTools(parsed)) touched = true;
+            if (flattenStoredItemReferences(parsed)) touched = true;
             if (touched) body = JSON.stringify(parsed);
           }
         } catch { /* not JSON — leave */ }
