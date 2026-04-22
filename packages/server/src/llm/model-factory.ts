@@ -1,5 +1,5 @@
 import { createAnthropic } from '@ai-sdk/anthropic';
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { execFileSync } from 'child_process';
 import { homedir } from 'os';
 import type { ModelTier, ProviderName } from '@airflux/core';
@@ -104,7 +104,64 @@ interface OAuthCredentials {
   scopes?: string[];
 }
 
+/**
+ * Pure parser for the JSON payload `security find-generic-password -w` prints.
+ * Kept separate so it can be unit-tested without shelling out.
+ */
+export function parseKeychainPayload(
+  raw: string,
+  inferenceScope: string,
+): OAuthCredentials | null {
+  if (!raw) return null;
+  try {
+    const d = JSON.parse(raw) as { claudeAiOauth?: Record<string, unknown> };
+    const o = d.claudeAiOauth;
+    if (!o) return null;
+    const scopes = o.scopes;
+    if (!Array.isArray(scopes) || !scopes.includes(inferenceScope)) return null;
+    const accessToken = o.accessToken;
+    if (typeof accessToken !== 'string' || accessToken.length === 0) return null;
+    return {
+      accessToken,
+      refreshToken: typeof o.refreshToken === 'string' ? o.refreshToken : undefined,
+      expiresAt: typeof o.expiresAt === 'number' ? o.expiresAt : 0,
+      scopes: scopes as string[],
+    };
+  } catch {
+    return null;
+  }
+}
+
+function insideContainerHint(): boolean {
+  // /.dockerenv is the strongest signal; cgroup read is best-effort.
+  try {
+    if (existsSync('/.dockerenv')) return true;
+    const cg = readFileSync('/proc/1/cgroup', 'utf-8');
+    return /docker|kubepods|containerd/.test(cg);
+  } catch {
+    return false;
+  }
+}
+
+function readKeychainCredentials(): OAuthCredentials | null {
+  try {
+    const raw = execFileSync(
+      'security',
+      ['find-generic-password', '-s', 'Claude Code-credentials', '-w'],
+      { encoding: 'utf-8', timeout: 3000 },
+    );
+    return parseKeychainPayload(raw, INFERENCE_SCOPE);
+  } catch {
+    return null;
+  }
+}
+
 function readCredentials(): OAuthCredentials | null {
+  if (process.platform === 'darwin' && !insideContainerHint()) {
+    const k = readKeychainCredentials();
+    if (k) return k;
+    // fall through to file fallback
+  }
   for (const path of CRED_PATHS) {
     try {
       const creds = JSON.parse(readFileSync(path, 'utf-8'));
@@ -117,9 +174,7 @@ function readCredentials(): OAuthCredentials | null {
           scopes: oauth.scopes as string[],
         };
       }
-    } catch {
-      // try next
-    }
+    } catch { /* try next path */ }
   }
   return null;
 }
