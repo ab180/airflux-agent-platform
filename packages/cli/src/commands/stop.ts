@@ -1,11 +1,13 @@
 import { Command } from 'commander';
+import treeKill from 'tree-kill';
 import { defaultDockerRunner, defaultPostgresConfig, type DockerRunner } from '../postgres.js';
 import { readState, clearState } from '../state.js';
 
 export interface RunStopOptions {
   cwd?: string;
   runner?: DockerRunner;
-  kill?: (pid: number, signal: NodeJS.Signals) => boolean;
+  kill?: (pid: number, signal: NodeJS.Signals | 0) => boolean;
+  gracePeriodMs?: number;
   reset?: boolean;
   confirm?: () => Promise<boolean>;
   log?: (msg: string) => void;
@@ -16,6 +18,7 @@ export async function runStop(opts: RunStopOptions = {}): Promise<void> {
   const cwd = opts.cwd ?? process.cwd();
   const runner = opts.runner ?? defaultDockerRunner;
   const kill = opts.kill ?? ((pid, sig) => process.kill(pid, sig));
+  const gracePeriodMs = opts.gracePeriodMs ?? 5000;
   const log = opts.log ?? ((m) => console.log(m));
   const state = readState(cwd);
 
@@ -24,11 +27,28 @@ export async function runStop(opts: RunStopOptions = {}): Promise<void> {
     return;
   }
 
+  const killers: Array<Promise<void>> = [];
   for (const service of [state.services.web, state.services.server] as const) {
     if (typeof service.pid === 'number') {
-      try { kill(service.pid, 'SIGTERM'); } catch { /* already gone */ }
+      const pid = service.pid;
+      killers.push(new Promise<void>((resolve) => {
+        let resolved = false;
+        const finish = () => { if (!resolved) { resolved = true; resolve(); } };
+        let poll: ReturnType<typeof setInterval>;
+        // Escalate to SIGKILL after grace period if SIGTERM didn't take.
+        const escalate = setTimeout(() => {
+          clearInterval(poll);
+          treeKill(pid, 'SIGKILL', () => finish());
+        }, gracePeriodMs);
+        // Poll process.kill(pid, 0) every 200ms; resolve when it throws (process gone).
+        poll = setInterval(() => {
+          try { kill(pid, 0); } catch { clearInterval(poll); clearTimeout(escalate); finish(); }
+        }, 200);
+        try { kill(pid, 'SIGTERM'); } catch { clearInterval(poll); clearTimeout(escalate); finish(); }
+      }));
     }
   }
+  await Promise.all(killers);
 
   const containerName = state.services.pg.container ?? defaultPostgresConfig.containerName;
   if (opts.reset) {

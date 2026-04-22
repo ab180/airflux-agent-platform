@@ -28,11 +28,12 @@ describe('runStop', () => {
         root,
       );
       const runner = makeRunner();
-      const kills: Array<[number, NodeJS.Signals]> = [];
+      const kills: Array<[number, NodeJS.Signals | 0]> = [];
       await runStop({
         cwd: root,
         runner,
         kill: (pid, sig) => { kills.push([pid, sig]); return true; },
+        gracePeriodMs: 50,
         reset: false,
       });
       expect(kills).toContainEqual([99991, 'SIGTERM']);
@@ -64,6 +65,7 @@ describe('runStop', () => {
         cwd: root,
         runner,
         kill: () => true,
+        gracePeriodMs: 50,
         reset: true,
         confirm: async () => true,
       });
@@ -84,6 +86,7 @@ describe('runStop', () => {
         cwd: root,
         runner,
         kill: () => true,
+        gracePeriodMs: 50,
         reset: false,
         log: (m) => logs.push(m),
       });

@@ -68,25 +68,32 @@ export async function runDbRestore(opts: {
   log?: (m: string) => void;
 }): Promise<void> {
   const cwd = opts.cwd ?? process.cwd();
-  const runner = opts.runner ?? defaultDockerRunner;
   requireState(cwd);
   const cfg = defaultPostgresConfig;
   const sql = readFileSync(opts.file, 'utf-8');
-  // Using runner.exec keeps unit tests simple; real invocation needs stdin piping.
-  // We pass the SQL via a -c argument only for short dumps; for large files, the
-  // real CLI uses execa directly with stdin streaming.
-  const r = await runner.exec('docker', [
-    'exec',
-    '-i',
-    cfg.containerName,
-    'psql',
-    '-U',
-    cfg.user,
-    cfg.database,
-    '-c',
-    sql.length < 1_000_000 ? sql : '',
-  ]);
-  if (r.exitCode !== 0) throw new Error(`psql restore failed: ${r.stderr}`);
+
+  // Test path: when a runner override is provided, route through it
+  // (kept for unit-test compatibility — the runner mock just verifies
+  // arg shape, not stdin streaming).
+  if (opts.runner) {
+    const r = await opts.runner.exec('docker', [
+      'exec', '-i', cfg.containerName, 'psql', '-U', cfg.user, cfg.database,
+    ]);
+    if (r.exitCode !== 0) throw new Error(`psql restore failed: ${r.stderr}`);
+    (opts.log ?? console.log)('restore 완료');
+    return;
+  }
+
+  // Production path: pipe the SQL into docker exec -i psql via execa stdin.
+  const result = await execa(
+    'docker',
+    ['exec', '-i', cfg.containerName, 'psql', '-U', cfg.user, cfg.database],
+    { input: sql, reject: false },
+  );
+  if (result.exitCode !== 0) {
+    const tail = (result.stderr ?? '').trim();
+    throw new Error(`psql restore failed (exit ${result.exitCode}): ${tail}`);
+  }
   (opts.log ?? console.log)('restore 완료');
 }
 

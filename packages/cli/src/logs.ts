@@ -33,6 +33,10 @@ export function prefixStream(
   });
   source.on('end', () => {
     if (buffer.length > 0) sink.write(`${formatLine(label, buffer)}\n`);
-    (sink as unknown as { end?: () => void }).end?.();
+    // Don't close shared process std streams — that would silently drop
+    // logs from sibling children once the first one exits.
+    if (sink !== process.stdout && sink !== process.stderr) {
+      (sink as unknown as { end?: () => void }).end?.();
+    }
   });
 }

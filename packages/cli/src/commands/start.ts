@@ -12,7 +12,7 @@ import {
 import { pickPort, type GetPortLike } from '../ports.js';
 import { spawnChild, terminateChild } from '../orchestra.js';
 import { prefixStream } from '../logs.js';
-import { writeState, clearState, STATE_VERSION } from '../state.js';
+import { readState, writeState, clearState, STATE_VERSION } from '../state.js';
 
 export interface PlanResult {
   pg: { reused: boolean; port: number; container: string };
@@ -83,6 +83,24 @@ export function registerStart(program: Command): void {
     .action(async (options: { open?: boolean }) => {
       const repoRoot = resolve(process.cwd());
       const pgConfig = defaultPostgresConfig;
+
+      // Stale state detection — if a previous airops start is still alive,
+      // don't double-spawn. If the state is from a dead session, fall through
+      // and let the rest of start clean up via writeState.
+      const existing = readState(repoRoot);
+      if (existing) {
+        const isAlive = (pid: number | undefined): boolean => {
+          if (typeof pid !== 'number') return false;
+          try { process.kill(pid, 0); return true; } catch { return false; }
+        };
+        if (isAlive(existing.services.server.pid) || isAlive(existing.services.web.pid)) {
+          console.error('이미 실행 중인 airops 세션이 있습니다. `airops stop` 후 다시 시도하세요.');
+          process.exitCode = 1;
+          return;
+        }
+        // PIDs are dead — clean up the stale state file before continuing.
+        clearState(repoRoot);
+      }
 
       console.log('starting airops…');
       const plan = await planStart({
