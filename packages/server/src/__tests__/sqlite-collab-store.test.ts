@@ -4,6 +4,7 @@ import {
   SqliteMembershipStore,
   SqliteProjectStore,
   SqliteDrawerStore,
+  SqlitePromotionStore,
 } from '../store/collab/index.js';
 import { getDb } from '../store/db.js';
 
@@ -11,10 +12,12 @@ const orgStore = new SqliteOrgStore();
 const membershipStore = new SqliteMembershipStore();
 const projectStore = new SqliteProjectStore();
 const drawerStore = new SqliteDrawerStore();
+const promotionStore = new SqlitePromotionStore();
 
 function cleanAll(): void {
   try {
     const db = getDb();
+    db.exec('DELETE FROM asset_promotions');
     db.exec('DELETE FROM project_memberships');
     db.exec('DELETE FROM personal_drawers');
     db.exec('DELETE FROM projects');
@@ -194,5 +197,101 @@ describe('SqliteDrawerStore', () => {
 
     const d2 = await drawerStore.ensureDrawer('alice');
     expect(d2.createdAt).toBe(d1.createdAt);
+  });
+});
+
+describe('SqlitePromotionStore', () => {
+  beforeEach(cleanAll);
+
+  async function seed() {
+    const org = await freshOrg();
+    const project = await projectStore.createProject({
+      orgId: org.id, slug: 'p', name: 'P', type: 'docs', visibility: 'internal',
+    });
+    return { org, project };
+  }
+
+  it('creates a promotion request in under-review state', async () => {
+    const { project } = await seed();
+    const rec = await promotionStore.request({
+      assetKind: 'agent',
+      assetId: 'my-agent',
+      fromScope: { kind: 'drawer', userId: 'alice' },
+      toScope: { kind: 'project', projectId: project.id },
+      requestedBy: 'alice',
+    });
+    expect(rec.state).toBe('under-review');
+    expect(rec.assetKind).toBe('agent');
+    expect(rec.fromScope).toEqual({ kind: 'drawer', userId: 'alice' });
+    expect(rec.toScope).toEqual({ kind: 'project', projectId: project.id });
+    expect(rec.requestedBy).toBe('alice');
+    expect(rec.reviewedBy).toBeUndefined();
+    expect(rec.decidedAt).toBeUndefined();
+  });
+
+  it('approves transitions to published and stamps reviewer/decidedAt', async () => {
+    const { project } = await seed();
+    const rec = await promotionStore.request({
+      assetKind: 'skill',
+      assetId: 'sql-analyst',
+      fromScope: { kind: 'drawer', userId: 'alice' },
+      toScope: { kind: 'project', projectId: project.id },
+      requestedBy: 'alice',
+    });
+    const approved = await promotionStore.approve(rec.id, 'bob', 'LGTM');
+    expect(approved.state).toBe('published');
+    expect(approved.reviewedBy).toBe('bob');
+    expect(approved.decidedAt).toMatch(/^\d{4}-\d{2}-\d{2}/);
+    expect(approved.notes).toBe('LGTM');
+  });
+
+  it('rejects transitions to deprecated', async () => {
+    const { project } = await seed();
+    const rec = await promotionStore.request({
+      assetKind: 'tool',
+      assetId: 't',
+      fromScope: { kind: 'drawer', userId: 'alice' },
+      toScope: { kind: 'project', projectId: project.id },
+      requestedBy: 'alice',
+    });
+    const rejected = await promotionStore.reject(rec.id, 'bob', 'insufficient coverage');
+    expect(rejected.state).toBe('deprecated');
+    expect(rejected.reviewedBy).toBe('bob');
+  });
+
+  it('refuses to transition a non-under-review record', async () => {
+    const { project } = await seed();
+    const rec = await promotionStore.request({
+      assetKind: 'agent',
+      assetId: 'a',
+      fromScope: { kind: 'drawer', userId: 'alice' },
+      toScope: { kind: 'project', projectId: project.id },
+      requestedBy: 'alice',
+    });
+    await promotionStore.approve(rec.id, 'bob');
+    await expect(promotionStore.approve(rec.id, 'bob')).rejects.toThrow(/state/i);
+  });
+
+  it('listPending returns only under-review records for the given project', async () => {
+    const { project } = await seed();
+    const openRec = await promotionStore.request({
+      assetKind: 'agent',
+      assetId: 'open',
+      fromScope: { kind: 'drawer', userId: 'alice' },
+      toScope: { kind: 'project', projectId: project.id },
+      requestedBy: 'alice',
+    });
+    const closedRec = await promotionStore.request({
+      assetKind: 'agent',
+      assetId: 'closed',
+      fromScope: { kind: 'drawer', userId: 'alice' },
+      toScope: { kind: 'project', projectId: project.id },
+      requestedBy: 'alice',
+    });
+    await promotionStore.approve(closedRec.id, 'bob');
+
+    const pending = await promotionStore.listPending(project.id);
+    expect(pending).toHaveLength(1);
+    expect(pending[0].id).toBe(openRec.id);
   });
 });

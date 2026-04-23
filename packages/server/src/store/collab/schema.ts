@@ -59,6 +59,29 @@ export function ensureCollabTables(): void {
       user_id TEXT PRIMARY KEY,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS asset_promotions (
+      id TEXT PRIMARY KEY,
+      asset_kind TEXT NOT NULL CHECK (asset_kind IN ('agent','skill','tool','prompt')),
+      asset_id TEXT NOT NULL,
+      from_scope_kind TEXT NOT NULL CHECK (from_scope_kind IN ('drawer','project')),
+      from_scope_ref TEXT NOT NULL,
+      to_scope_kind TEXT NOT NULL CHECK (to_scope_kind IN ('drawer','project')),
+      to_scope_ref TEXT NOT NULL,
+      state TEXT NOT NULL CHECK (state IN (
+        'personal-draft','under-review','published','deprecated','archived'
+      )),
+      requested_by TEXT NOT NULL,
+      reviewed_by TEXT,
+      decided_at TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_promotions_target
+      ON asset_promotions(to_scope_kind, to_scope_ref, state);
+    CREATE INDEX IF NOT EXISTS idx_promotions_requester
+      ON asset_promotions(requested_by, created_at DESC);
   `);
   initialized = true;
 }

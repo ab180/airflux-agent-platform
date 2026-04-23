@@ -18,6 +18,7 @@ import { cliAuthRoutes } from './routes/cli-auth.js';
 import { messageRoutes } from './routes/messages.js';
 import { mcpRoutes } from './routes/mcp.js';
 import { workspacesRoute } from './routes/workspaces.js';
+import { promotionsRoute } from './routes/promotions.js';
 
 export const app = new Hono();
 
@@ -79,6 +80,9 @@ app.route('/api', mcpRoutes);
 
 // Collaboration primitives (orgs/projects/drawer)
 app.route('/api', workspacesRoute);
+
+// Asset promotion workflow (drawer → project review/approval)
+app.route('/api', promotionsRoute);
 
 // Admin API endpoints (requires auth in production)
 app.use('/api/admin/*', adminAuth);
