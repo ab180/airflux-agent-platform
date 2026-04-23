@@ -6,6 +6,7 @@ import {
   SqliteOrgStore,
   SqlitePromotionStore,
   SqliteProjectStore,
+  SqliteProjectAssetStore,
 } from '../store/collab/index.js';
 import { resolveTrustedUserId } from '../security/trusted-user.js';
 import { getEnvironment } from '../runtime/environment.js';
@@ -18,6 +19,7 @@ const promotionStore = new SqlitePromotionStore();
 const projectStore = new SqliteProjectStore();
 const orgStore = new SqliteOrgStore();
 const membershipStore = new SqliteMembershipStore();
+const projectAssetStore = new SqliteProjectAssetStore();
 
 function currentUser(headers: Headers): string {
   const env = getEnvironment();
@@ -204,6 +206,21 @@ async function handleTransition(c: Context, op: 'approve' | 'reject'): Promise<R
       op === 'approve'
         ? await promotionStore.approve(id, userId, notes)
         : await promotionStore.reject(id, userId, notes);
+
+    // On approve, publish the asset to the target project. This doesn't
+    // move config (still lives in markdown/YAML/registry); it records
+    // "this project is running this asset", so dashboard can surface
+    // published assets and later scoped execution can gate by this table.
+    if (op === 'approve' && rec.toScope.kind === 'project' && rec.fromScope.kind === 'drawer') {
+      await projectAssetStore.publish({
+        projectId: rec.toScope.projectId!,
+        assetKind: rec.assetKind,
+        assetId: rec.assetId,
+        promotedFromDrawer: rec.fromScope.userId!,
+        promotionId: rec.id,
+      });
+    }
+
     logAudit({
       userId,
       action: `promotion.${op}`,

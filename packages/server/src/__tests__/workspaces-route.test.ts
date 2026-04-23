@@ -16,6 +16,8 @@ const projectStore = new SqliteProjectStore();
 function cleanAll(): void {
   try {
     const db = getDb();
+    db.exec('DELETE FROM project_assets');
+    db.exec('DELETE FROM asset_promotions');
     db.exec('DELETE FROM project_memberships');
     db.exec('DELETE FROM personal_drawers');
     db.exec('DELETE FROM projects');

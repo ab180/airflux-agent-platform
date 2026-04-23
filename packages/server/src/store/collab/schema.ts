@@ -82,6 +82,21 @@ export function ensureCollabTables(): void {
       ON asset_promotions(to_scope_kind, to_scope_ref, state);
     CREATE INDEX IF NOT EXISTS idx_promotions_requester
       ON asset_promotions(requested_by, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS project_assets (
+      project_id TEXT NOT NULL,
+      asset_kind TEXT NOT NULL CHECK (asset_kind IN ('agent','skill','tool','prompt')),
+      asset_id TEXT NOT NULL,
+      promoted_from_drawer TEXT NOT NULL,
+      promotion_id TEXT NOT NULL,
+      published_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (project_id, asset_kind, asset_id),
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+      FOREIGN KEY (promotion_id) REFERENCES asset_promotions(id) ON DELETE RESTRICT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_project_assets_project
+      ON project_assets(project_id);
   `);
   initialized = true;
 }

@@ -152,6 +152,29 @@ export interface PromotionStore {
   listPending(projectId: string): Promise<AssetPromotionRecord[]>;
 }
 
+/**
+ * Project-scoped asset registry — tracks which agents/skills/tools/prompts
+ * have been published into each project via promotion approval. The actual
+ * asset config still lives wherever its kind-specific loader reads from
+ * (markdown, YAML, registry). This table records the *membership* so the
+ * dashboard can render "which assets is this project running?" and later
+ * enforcement can gate scoped execution.
+ */
+export interface ProjectAsset {
+  projectId: string;
+  assetKind: 'agent' | 'skill' | 'tool' | 'prompt';
+  assetId: string;
+  promotedFromDrawer: string;
+  promotionId: string;
+  publishedAt: string;
+}
+
+export interface ProjectAssetStore {
+  publish(input: Omit<ProjectAsset, 'publishedAt'>): Promise<ProjectAsset>;
+  list(projectId: string): Promise<ProjectAsset[]>;
+  unpublish(projectId: string, assetKind: ProjectAsset['assetKind'], assetId: string): Promise<boolean>;
+}
+
 export interface ACLStore {
   set(acl: ResourceACL): Promise<void>;
   remove(acl: Omit<ResourceACL, 'role'>): Promise<void>;

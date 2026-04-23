@@ -6,6 +6,7 @@ import {
   SqliteMembershipStore,
   SqliteProjectStore,
   SqlitePromotionStore,
+  SqliteProjectAssetStore,
 } from '../store/collab/index.js';
 import { getDb } from '../store/db.js';
 import { queryAudit } from '../store/audit-log.js';
@@ -15,11 +16,13 @@ const orgStore = new SqliteOrgStore();
 const membershipStore = new SqliteMembershipStore();
 const projectStore = new SqliteProjectStore();
 const promotionStore = new SqlitePromotionStore();
+const projectAssetStore = new SqliteProjectAssetStore();
 
 function cleanAll(): void {
   try {
     const db = getDb();
     db.exec('DELETE FROM audit_log');
+    db.exec('DELETE FROM project_assets');
     db.exec('DELETE FROM asset_promotions');
     db.exec('DELETE FROM project_memberships');
     db.exec('DELETE FROM personal_drawers');
@@ -257,6 +260,16 @@ describe('POST /api/promotions/:id/approve|reject', () => {
     expect(total).toBe(1);
     expect(events[0].outcome).toBe('success');
     expect(events[0].metadata).toMatchObject({ state: 'published' });
+
+    // Approved promotion should also publish the asset to the project
+    const assets = await projectAssetStore.list(project.id);
+    expect(assets).toHaveLength(1);
+    expect(assets[0]).toMatchObject({
+      assetKind: 'agent',
+      assetId: 'a',
+      promotionId: rec.id,
+      promotedFromDrawer: 'local',
+    });
   });
 
   it('403 when caller is not maintainer (e.g. only runner)', async () => {

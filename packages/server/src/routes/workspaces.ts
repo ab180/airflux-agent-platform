@@ -7,6 +7,7 @@ import {
   SqliteMembershipStore,
   SqliteProjectStore,
   SqliteDrawerStore,
+  SqliteProjectAssetStore,
 } from '../store/collab/index.js';
 import { resolveTrustedUserId } from '../security/trusted-user.js';
 import { getEnvironment } from '../runtime/environment.js';
@@ -18,6 +19,7 @@ const orgStore = new SqliteOrgStore();
 const membershipStore = new SqliteMembershipStore();
 const projectStore = new SqliteProjectStore();
 const drawerStore = new SqliteDrawerStore();
+const projectAssetStore = new SqliteProjectAssetStore();
 
 function currentUser(headers: Headers): string {
   const env = getEnvironment();
@@ -211,6 +213,56 @@ workspacesRoute.delete('/orgs/:orgId/members/:userId', async (c) => {
     resource: `org:${orgId}`,
     outcome: 'success',
     metadata: { targetUserId },
+  });
+  return c.json({ ok: true });
+});
+
+/**
+ * GET /api/projects/:projectId/assets — project's published assets
+ * (via promotion approval). Any member can list.
+ */
+workspacesRoute.get('/projects/:projectId/assets', async (c) => {
+  const projectId = c.req.param('projectId');
+  const caller = currentUser(new Headers(c.req.raw.headers));
+  const role = await membershipStore.userRoleInProject(caller, projectId);
+  if (!role) {
+    return c.json({ error: 'not a member of this project' }, 403);
+  }
+  const assets = await projectAssetStore.list(projectId);
+  return c.json({ assets });
+});
+
+/**
+ * DELETE /api/projects/:projectId/assets/:kind/:id — unpublish.
+ * Maintainer only. Doesn't delete the asset config; just removes the
+ * project's claim on it.
+ */
+workspacesRoute.delete('/projects/:projectId/assets/:kind/:id', async (c) => {
+  const projectId = c.req.param('projectId');
+  const kind = c.req.param('kind');
+  const assetId = c.req.param('id');
+  const caller = currentUser(new Headers(c.req.raw.headers));
+  const callerRole = await membershipStore.userRoleInProject(caller, projectId);
+  if (callerRole !== 'maintainer') {
+    return c.json({ error: 'only project maintainers can unpublish assets' }, 403);
+  }
+
+  if (!['agent', 'skill', 'tool', 'prompt'].includes(kind)) {
+    return c.json({ error: 'invalid asset kind' }, 400);
+  }
+
+  const ok = await projectAssetStore.unpublish(
+    projectId,
+    kind as 'agent' | 'skill' | 'tool' | 'prompt',
+    assetId,
+  );
+  if (!ok) return c.json({ error: 'asset not found' }, 404);
+  logAudit({
+    userId: caller,
+    action: 'project.asset.unpublish',
+    resource: `project:${projectId}`,
+    outcome: 'success',
+    metadata: { assetKind: kind, assetId },
   });
   return c.json({ ok: true });
 });
