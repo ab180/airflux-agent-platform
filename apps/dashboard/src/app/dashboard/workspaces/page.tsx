@@ -91,7 +91,10 @@ export default async function WorkspacesPage() {
               key={org.id}
               className="rounded-lg border border-border/50 overflow-hidden"
             >
-              <div className="border-b border-border/50 bg-muted/20 px-4 py-3">
+              <Link
+                href={`/dashboard/orgs/${org.id}`}
+                className="block border-b border-border/50 bg-muted/20 px-4 py-3 transition-colors hover:bg-muted/40"
+              >
                 <div className="flex items-center gap-2">
                   <span className="text-[13px] font-semibold tracking-tight">
                     {org.name}
@@ -103,7 +106,7 @@ export default async function WorkspacesPage() {
                 <p className="mt-0.5 text-[11px] text-muted-foreground">
                   {org.projects.length}개 프로젝트
                 </p>
-              </div>
+              </Link>
               {org.projects.length === 0 ? (
                 <div className="px-4 py-5 space-y-3">
                   <p className="text-[12px] text-muted-foreground">
