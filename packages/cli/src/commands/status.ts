@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import { readState } from '../state.js';
+import { findRepoRoot } from '../repo-root.js';
 
 export interface RunStatusOptions {
   cwd?: string;
@@ -8,7 +9,7 @@ export interface RunStatusOptions {
 }
 
 export async function runStatus(opts: RunStatusOptions = {}): Promise<void> {
-  const cwd = opts.cwd ?? process.cwd();
+  const cwd = opts.cwd ?? findRepoRoot();
   const isAlive =
     opts.isAlive ?? ((pid) => { try { process.kill(pid, 0); return true; } catch { return false; } });
   const log = opts.log ?? ((m) => console.log(m));

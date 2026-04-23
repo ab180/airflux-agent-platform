@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { resolve } from 'node:path';
 import { mkdirSync } from 'node:fs';
+import { findRepoRoot } from '../repo-root.js';
 import {
   defaultPostgresConfig,
   defaultDockerRunner,
@@ -81,7 +82,7 @@ export function registerStart(program: Command): void {
     .description('Start Postgres + server + dashboard (foreground)')
     .option('--open', 'open the dashboard URL in the default browser')
     .action(async (options: { open?: boolean }) => {
-      const repoRoot = resolve(process.cwd());
+      const repoRoot = findRepoRoot();
       const pgConfig = defaultPostgresConfig;
 
       // Stale state detection — if a previous airops start is still alive,

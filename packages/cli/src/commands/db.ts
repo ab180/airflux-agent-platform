@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { execa } from 'execa';
 import { defaultDockerRunner, defaultPostgresConfig, type DockerRunner } from '../postgres.js';
 import { readState } from '../state.js';
+import { findRepoRoot } from '../repo-root.js';
 
 function requireState(cwd: string) {
   const s = readState(cwd);
@@ -17,14 +18,14 @@ function connectionUrl(cwd: string): string {
 }
 
 export async function runDbUrl(opts: { cwd?: string; log?: (m: string) => void } = {}): Promise<void> {
-  const cwd = opts.cwd ?? process.cwd();
+  const cwd = opts.cwd ?? findRepoRoot();
   const log = opts.log ?? ((m) => console.log(m));
   log(connectionUrl(cwd));
 }
 
 /** Replaces current process with `docker exec -it airops-pg psql ...`. */
 export async function runDbPsql(opts: { cwd?: string } = {}): Promise<never> {
-  const cwd = opts.cwd ?? process.cwd();
+  const cwd = opts.cwd ?? findRepoRoot();
   requireState(cwd);
   const cfg = defaultPostgresConfig;
   await execa('docker', ['exec', '-it', cfg.containerName, 'psql', '-U', cfg.user, cfg.database], {
@@ -40,7 +41,7 @@ export async function runDbDump(opts: {
   file?: string;
   log?: (m: string) => void;
 }): Promise<void> {
-  const cwd = opts.cwd ?? process.cwd();
+  const cwd = opts.cwd ?? findRepoRoot();
   const runner = opts.runner ?? defaultDockerRunner;
   requireState(cwd);
   const cfg = defaultPostgresConfig;
@@ -67,7 +68,7 @@ export async function runDbRestore(opts: {
   file: string;
   log?: (m: string) => void;
 }): Promise<void> {
-  const cwd = opts.cwd ?? process.cwd();
+  const cwd = opts.cwd ?? findRepoRoot();
   requireState(cwd);
   const cfg = defaultPostgresConfig;
   const sql = readFileSync(opts.file, 'utf-8');
@@ -103,7 +104,7 @@ export async function runDbReset(opts: {
   confirm: () => Promise<boolean>;
   log?: (m: string) => void;
 }): Promise<void> {
-  const cwd = opts.cwd ?? process.cwd();
+  const cwd = opts.cwd ?? findRepoRoot();
   const runner = opts.runner ?? defaultDockerRunner;
   const log = opts.log ?? ((m) => console.log(m));
   const cfg = defaultPostgresConfig;

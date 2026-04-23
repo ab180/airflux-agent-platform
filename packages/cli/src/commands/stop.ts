@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import treeKill from 'tree-kill';
 import { defaultDockerRunner, defaultPostgresConfig, type DockerRunner } from '../postgres.js';
 import { readState, clearState } from '../state.js';
+import { findRepoRoot } from '../repo-root.js';
 
 export interface RunStopOptions {
   cwd?: string;
@@ -15,7 +16,7 @@ export interface RunStopOptions {
 }
 
 export async function runStop(opts: RunStopOptions = {}): Promise<void> {
-  const cwd = opts.cwd ?? process.cwd();
+  const cwd = opts.cwd ?? findRepoRoot();
   const runner = opts.runner ?? defaultDockerRunner;
   const kill = opts.kill ?? ((pid, sig) => process.kill(pid, sig));
   const gracePeriodMs = opts.gracePeriodMs ?? 5000;
