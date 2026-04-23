@@ -31,6 +31,7 @@ import type {
 import { z } from 'zod';
 import { createModelAsync, preloadOAuthOnBoot } from './llm/model-factory.js';
 import { attachMCPToolsToAgents, registerMCPToolsToRegistry } from './mcp/client.js';
+import { getEnvironment } from './runtime/environment.js';
 
 export async function bootstrap(settingsPath?: string): Promise<void> {
   const settingsDir = settingsPath || process.env.SETTINGS_DIR || resolve(process.cwd(), '../../settings');
@@ -111,6 +112,37 @@ export async function bootstrap(settingsPath?: string): Promise<void> {
         tools: [],
       },
     ]);
+  }
+
+  // 4b. Bootstrap collab primitives in local mode — every local user gets
+  // a default 'personal' org and their own drawer. Team mode skips this:
+  // provisioning is driven by invitations + API key instead.
+  try {
+    const env = getEnvironment();
+    if (env.runMode === 'local') {
+      const { SqliteOrgStore, SqliteMembershipStore, SqliteDrawerStore } =
+        await import('./store/collab/index.js');
+      const orgStore = new SqliteOrgStore();
+      const membershipStore = new SqliteMembershipStore();
+      const drawerStore = new SqliteDrawerStore();
+
+      const existing = await orgStore.listOrgsForUser('local');
+      if (existing.length === 0) {
+        try {
+          const org = await orgStore.createOrg({ slug: 'personal', name: 'Personal' });
+          await membershipStore.addOrgMember({
+            orgId: org.id, userId: 'local', role: 'admin',
+          });
+          logger.info('Default local org created', { id: org.id });
+        } catch (e) {
+          // slug already exists — re-fetch via the user list so we stay idempotent
+          logger.info('Default org exists; skipping create');
+        }
+      }
+      await drawerStore.ensureDrawer('local');
+    }
+  } catch (e) {
+    logger.warn('collab bootstrap skipped', { error: (e as Error).message });
   }
 
   // 5. Load feature flags and apply to agents

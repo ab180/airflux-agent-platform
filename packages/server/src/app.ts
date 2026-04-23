@@ -17,6 +17,7 @@ import { conversationRoutes } from './routes/conversations.js';
 import { cliAuthRoutes } from './routes/cli-auth.js';
 import { messageRoutes } from './routes/messages.js';
 import { mcpRoutes } from './routes/mcp.js';
+import { workspacesRoute } from './routes/workspaces.js';
 
 export const app = new Hono();
 
@@ -75,6 +76,9 @@ app.route('/api', cliAuthRoutes);
 
 // User MCP connections
 app.route('/api', mcpRoutes);
+
+// Collaboration primitives (orgs/projects/drawer)
+app.route('/api', workspacesRoute);
 
 // Admin API endpoints (requires auth in production)
 app.use('/api/admin/*', adminAuth);
