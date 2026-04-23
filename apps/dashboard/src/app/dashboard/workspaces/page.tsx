@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { OrgCreateForm } from "@/components/dashboard/org-create-form";
+import { ProjectCreateForm } from "@/components/dashboard/project-create-form";
 import {
   fetchAPISafe,
   type WorkspaceResponse,
@@ -43,6 +45,7 @@ export default async function WorkspacesPage() {
             </span>
           </p>
         </div>
+        <OrgCreateForm />
       </header>
 
       {/* Personal drawer */}
@@ -102,9 +105,12 @@ export default async function WorkspacesPage() {
                 </p>
               </div>
               {org.projects.length === 0 ? (
-                <p className="px-4 py-5 text-[12px] text-muted-foreground">
-                  이 조직에는 아직 프로젝트가 없습니다.
-                </p>
+                <div className="px-4 py-5 space-y-3">
+                  <p className="text-[12px] text-muted-foreground">
+                    이 조직에는 아직 프로젝트가 없습니다.
+                  </p>
+                  <ProjectCreateForm orgId={org.id} />
+                </div>
               ) : (
                 <ul className="divide-y divide-border/40">
                   {org.projects.map((p) => (
@@ -137,6 +143,9 @@ export default async function WorkspacesPage() {
                       </Link>
                     </li>
                   ))}
+                  <li className="border-t border-border/40 px-4 py-2">
+                    <ProjectCreateForm orgId={org.id} />
+                  </li>
                 </ul>
               )}
             </div>
