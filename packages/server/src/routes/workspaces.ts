@@ -67,6 +67,30 @@ workspacesRoute.get('/workspaces', async (c) => {
 });
 
 /**
+ * GET /api/projects/:projectId — project detail + caller's role + members.
+ * Caller must be a member of the project (any role).
+ */
+workspacesRoute.get('/projects/:projectId', async (c) => {
+  const projectId = c.req.param('projectId');
+  const userId = currentUser(new Headers(c.req.raw.headers));
+
+  const project = await projectStore.getProject(projectId);
+  if (!project) return c.json({ error: 'project not found' }, 404);
+
+  const role = await membershipStore.userRoleInProject(userId, projectId);
+  if (!role) {
+    return c.json({ error: 'not a member of this project' }, 403);
+  }
+
+  const members = await membershipStore.listProjectMembers(projectId);
+  return c.json({
+    project,
+    callerRole: role,
+    members,
+  });
+});
+
+/**
  * POST /api/orgs { slug, name }
  * Creates an org with the caller as admin.
  */

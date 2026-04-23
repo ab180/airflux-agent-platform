@@ -82,6 +82,53 @@ describe('GET /api/workspaces (local mode)', () => {
   });
 });
 
+describe('GET /api/projects/:projectId', () => {
+  beforeEach(() => {
+    cleanAll();
+    vi.unstubAllEnvs();
+    resetEnvironmentCache();
+    vi.stubEnv('AIROPS_MODE', 'local');
+  });
+
+  it('returns project + caller role + members for a member', async () => {
+    const org = await orgStore.createOrg({ slug: 'o', name: 'O' });
+    await membershipStore.addOrgMember({ orgId: org.id, userId: 'local', role: 'admin' });
+    const p = await projectStore.createProject({
+      orgId: org.id, slug: 'p', name: 'P', type: 'docs', visibility: 'internal',
+    });
+    await membershipStore.addProjectMember({
+      projectId: p.id, userId: 'local', role: 'maintainer',
+    });
+
+    const res = await makeApp().request(`/api/projects/${p.id}`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      project: { id: string };
+      callerRole: string;
+      members: Array<{ userId: string; role: string }>;
+    };
+    expect(body.project.id).toBe(p.id);
+    expect(body.callerRole).toBe('maintainer');
+    expect(body.members).toHaveLength(1);
+    expect(body.members[0].userId).toBe('local');
+  });
+
+  it('404 when project does not exist', async () => {
+    const res = await makeApp().request('/api/projects/no-such');
+    expect(res.status).toBe(404);
+  });
+
+  it('403 when caller is not a project member', async () => {
+    const org = await orgStore.createOrg({ slug: 'o', name: 'O' });
+    const p = await projectStore.createProject({
+      orgId: org.id, slug: 'p', name: 'P', type: 'docs', visibility: 'private',
+    });
+    // no project membership added for 'local'
+    const res = await makeApp().request(`/api/projects/${p.id}`);
+    expect(res.status).toBe(403);
+  });
+});
+
 describe('POST /api/orgs', () => {
   beforeEach(() => {
     cleanAll();
