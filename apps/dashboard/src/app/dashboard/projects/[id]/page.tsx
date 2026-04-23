@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
+import { PromotionDecision } from "@/components/dashboard/promotion-decision";
 import {
   fetchAPI,
   fetchAPISafe,
@@ -169,6 +170,7 @@ export default async function ProjectDetailPage({
                         {p.notes}
                       </p>
                     ) : null}
+                    {isMaintainer ? <PromotionDecision promotionId={p.id} /> : null}
                   </div>
                 </div>
               </li>
