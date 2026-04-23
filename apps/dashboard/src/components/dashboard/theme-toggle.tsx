@@ -16,13 +16,14 @@ export function ThemeToggle() {
 
   if (!mounted) {
     return (
-      <button
-        type="button"
-        aria-label="테마"
-        className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground/40"
+      <span
+        aria-hidden
+        className="inline-flex items-center gap-1.5 rounded-md border border-border/40 bg-transparent px-2 py-1 text-[10px] text-muted-foreground/50"
+        style={{ minWidth: 56 }}
       >
         <span className="block h-3 w-3 rounded-full border border-current" />
-      </button>
+        <span className="opacity-0">시스템</span>
+      </span>
     );
   }
 

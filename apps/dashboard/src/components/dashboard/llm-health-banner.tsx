@@ -119,9 +119,9 @@ export function LLMHealthBanner() {
       : "info";
   const palette =
     severity === "error"
-      ? "border-red-500/40 bg-red-500/10 text-red-200"
+      ? "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-200"
       : severity === "warn"
-        ? "border-amber-500/40 bg-amber-500/10 text-amber-200"
+        ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-200"
         : "border-border/50 bg-muted/30 text-muted-foreground";
   const headerLabel = bothBroken
     ? "LLM 호출 불가 — 모든 provider 인증 실패"
