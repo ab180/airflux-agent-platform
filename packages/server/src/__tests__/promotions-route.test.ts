@@ -8,6 +8,7 @@ import {
   SqlitePromotionStore,
 } from '../store/collab/index.js';
 import { getDb } from '../store/db.js';
+import { queryAudit } from '../store/audit-log.js';
 import { resetEnvironmentCache } from '../runtime/environment.js';
 
 const orgStore = new SqliteOrgStore();
@@ -18,6 +19,7 @@ const promotionStore = new SqlitePromotionStore();
 function cleanAll(): void {
   try {
     const db = getDb();
+    db.exec('DELETE FROM audit_log');
     db.exec('DELETE FROM asset_promotions');
     db.exec('DELETE FROM project_memberships');
     db.exec('DELETE FROM personal_drawers');
@@ -59,7 +61,7 @@ describe('POST /api/promotions/request', () => {
     resetEnvironmentCache();
   });
 
-  it('creates an under-review record', async () => {
+  it('creates an under-review record + emits audit event', async () => {
     const { project } = await seed();
     const res = await makeApp().request('/api/promotions/request', {
       method: 'POST',
@@ -75,6 +77,10 @@ describe('POST /api/promotions/request', () => {
     const body = (await res.json()) as { state: string; requestedBy: string };
     expect(body.state).toBe('under-review');
     expect(body.requestedBy).toBe('local');
+
+    const { events, total } = queryAudit({ action: 'promotion.request' });
+    expect(total).toBe(1);
+    expect(events[0].outcome).toBe('success');
   });
 
   it('400 when assetKind invalid', async () => {
@@ -246,6 +252,11 @@ describe('POST /api/promotions/:id/approve|reject', () => {
     const body = (await res.json()) as { state: string; reviewedBy: string };
     expect(body.state).toBe('published');
     expect(body.reviewedBy).toBe('local');
+
+    const { events, total } = queryAudit({ action: 'promotion.approve' });
+    expect(total).toBe(1);
+    expect(events[0].outcome).toBe('success');
+    expect(events[0].metadata).toMatchObject({ state: 'published' });
   });
 
   it('403 when caller is not maintainer (e.g. only runner)', async () => {

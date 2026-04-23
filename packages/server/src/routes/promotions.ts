@@ -10,6 +10,7 @@ import {
 import { resolveTrustedUserId } from '../security/trusted-user.js';
 import { getEnvironment } from '../runtime/environment.js';
 import { getDb } from '../store/db.js';
+import { logAudit } from '../store/audit-log.js';
 
 export const promotionsRoute = new Hono();
 
@@ -96,6 +97,17 @@ promotionsRoute.post('/promotions/request', async (c) => {
     toScope: { kind: 'project', projectId: toProjectId },
     requestedBy: userId,
     ...(notes !== undefined ? { notes } : {}),
+  });
+  logAudit({
+    userId,
+    action: 'promotion.request',
+    resource: `promotion:${record.id}`,
+    outcome: 'success',
+    metadata: {
+      assetKind: record.assetKind,
+      assetId: record.assetId,
+      toProjectId,
+    },
   });
   return c.json(record, 201);
 });
@@ -192,9 +204,28 @@ async function handleTransition(c: Context, op: 'approve' | 'reject'): Promise<R
       op === 'approve'
         ? await promotionStore.approve(id, userId, notes)
         : await promotionStore.reject(id, userId, notes);
+    logAudit({
+      userId,
+      action: `promotion.${op}`,
+      resource: `promotion:${rec.id}`,
+      outcome: 'success',
+      metadata: {
+        assetKind: rec.assetKind,
+        assetId: rec.assetId,
+        projectId,
+        state: rec.state,
+      },
+    });
     return c.json(rec, 200);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    logAudit({
+      userId,
+      action: `promotion.${op}`,
+      resource: `promotion:${id}`,
+      outcome: 'failure',
+      metadata: { error: msg, projectId },
+    });
     if (/not found/i.test(msg)) return c.json({ error: msg }, 404);
     if (/state/i.test(msg)) return c.json({ error: msg }, 409);
     throw err;

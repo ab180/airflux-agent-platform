@@ -8,6 +8,7 @@ import {
 } from '../store/collab/index.js';
 import { resolveTrustedUserId } from '../security/trusted-user.js';
 import { getEnvironment } from '../runtime/environment.js';
+import { logAudit } from '../store/audit-log.js';
 
 export const workspacesRoute = new Hono();
 
@@ -116,10 +117,21 @@ workspacesRoute.post('/orgs', async (c) => {
   try {
     const org = await orgStore.createOrg({ slug, name });
     await membershipStore.addOrgMember({ orgId: org.id, userId, role: 'admin' });
+    logAudit({
+      userId,
+      action: 'org.create',
+      resource: `org:${org.id}`,
+      outcome: 'success',
+      metadata: { slug: org.slug, name: org.name },
+    });
     return c.json(org, 201);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (/already exists/i.test(msg)) {
+      logAudit({
+        userId, action: 'org.create', outcome: 'failure',
+        metadata: { reason: 'duplicate slug', slug },
+      });
       return c.json({ error: msg }, 409);
     }
     throw err;
@@ -180,10 +192,21 @@ workspacesRoute.post('/orgs/:orgId/projects', async (c) => {
       userId,
       role: 'maintainer',
     });
+    logAudit({
+      userId,
+      action: 'project.create',
+      resource: `project:${project.id}`,
+      outcome: 'success',
+      metadata: { orgId, slug: project.slug, type: project.type, visibility: project.visibility },
+    });
     return c.json(project, 201);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (/already exists/i.test(msg)) {
+      logAudit({
+        userId, action: 'project.create', outcome: 'failure',
+        metadata: { reason: 'duplicate slug', orgId, slug },
+      });
       return c.json({ error: msg }, 409);
     }
     throw err;
