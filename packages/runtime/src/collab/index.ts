@@ -175,6 +175,32 @@ export interface ProjectAssetStore {
   unpublish(projectId: string, assetKind: ProjectAsset['assetKind'], assetId: string): Promise<boolean>;
 }
 
+/**
+ * Drawer asset — user's personal registry entry before promotion. The
+ * config itself still lives in the kind-specific loader (markdown/YAML/
+ * registry); this row records "I'm working on this", so dashboard can
+ * surface drawer contents + the promotion form can pick from a list
+ * instead of free-text asset ids.
+ */
+export interface DrawerAsset {
+  userId: string;
+  assetKind: 'agent' | 'skill' | 'tool' | 'prompt';
+  assetId: string;
+  displayName: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface DrawerAssetStore {
+  register(input: Omit<DrawerAsset, 'createdAt'>): Promise<DrawerAsset>;
+  list(userId: string): Promise<DrawerAsset[]>;
+  remove(
+    userId: string,
+    assetKind: DrawerAsset['assetKind'],
+    assetId: string,
+  ): Promise<boolean>;
+}
+
 export interface ACLStore {
   set(acl: ResourceACL): Promise<void>;
   remove(acl: Omit<ResourceACL, 'role'>): Promise<void>;

@@ -16,6 +16,7 @@ const projectStore = new SqliteProjectStore();
 function cleanAll(): void {
   try {
     const db = getDb();
+    db.exec('DELETE FROM drawer_assets');
     db.exec('DELETE FROM project_assets');
     db.exec('DELETE FROM asset_promotions');
     db.exec('DELETE FROM project_memberships');
@@ -177,6 +178,94 @@ describe('POST /api/orgs', () => {
       body: JSON.stringify({ slug: 'dup', name: 'two' }),
     });
     expect(res.status).toBe(409);
+  });
+});
+
+describe('drawer assets', () => {
+  beforeEach(() => {
+    cleanAll();
+    vi.unstubAllEnvs();
+    resetEnvironmentCache();
+    vi.stubEnv('AIROPS_MODE', 'local');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    resetEnvironmentCache();
+  });
+
+  it('POST registers an asset, GET lists it', async () => {
+    const app = makeApp();
+    const post = await app.request('/api/drawer/assets', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        assetKind: 'agent',
+        assetId: 'my-sql-agent',
+        displayName: 'My SQL Agent',
+        notes: 'drafted this week',
+      }),
+    });
+    expect(post.status).toBe(201);
+
+    const list = await app.request('/api/drawer/assets');
+    const body = (await list.json()) as {
+      assets: Array<{ assetId: string; displayName: string }>;
+    };
+    expect(body.assets).toHaveLength(1);
+    expect(body.assets[0].assetId).toBe('my-sql-agent');
+    expect(body.assets[0].displayName).toBe('My SQL Agent');
+  });
+
+  it('POST with same kind+id updates existing (upsert)', async () => {
+    const app = makeApp();
+    await app.request('/api/drawer/assets', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        assetKind: 'skill', assetId: 's1', displayName: 'first',
+      }),
+    });
+    await app.request('/api/drawer/assets', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        assetKind: 'skill', assetId: 's1', displayName: 'second',
+      }),
+    });
+    const list = await app.request('/api/drawer/assets');
+    const body = (await list.json()) as {
+      assets: Array<{ displayName: string }>;
+    };
+    expect(body.assets).toHaveLength(1);
+    expect(body.assets[0].displayName).toBe('second');
+  });
+
+  it('DELETE removes the asset', async () => {
+    const app = makeApp();
+    await app.request('/api/drawer/assets', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        assetKind: 'tool', assetId: 't1', displayName: 'T',
+      }),
+    });
+    const del = await app.request('/api/drawer/assets/tool/t1', {
+      method: 'DELETE',
+    });
+    expect(del.status).toBe(200);
+
+    const list = await app.request('/api/drawer/assets');
+    const body = (await list.json()) as { assets: unknown[] };
+    expect(body.assets).toEqual([]);
+  });
+
+  it('400 on invalid assetKind', async () => {
+    const res = await makeApp().request('/api/drawer/assets', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ assetKind: 'bogus', assetId: 'x' }),
+    });
+    expect(res.status).toBe(400);
   });
 });
 

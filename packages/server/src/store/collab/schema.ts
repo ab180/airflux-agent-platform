@@ -97,6 +97,17 @@ export function ensureCollabTables(): void {
 
     CREATE INDEX IF NOT EXISTS idx_project_assets_project
       ON project_assets(project_id);
+
+    CREATE TABLE IF NOT EXISTS drawer_assets (
+      user_id TEXT NOT NULL,
+      asset_kind TEXT NOT NULL CHECK (asset_kind IN ('agent','skill','tool','prompt')),
+      asset_id TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (user_id, asset_kind, asset_id),
+      FOREIGN KEY (user_id) REFERENCES personal_drawers(user_id) ON DELETE CASCADE
+    );
   `);
   initialized = true;
 }

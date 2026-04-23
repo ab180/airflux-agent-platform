@@ -8,6 +8,7 @@ import {
   SqliteProjectStore,
   SqliteDrawerStore,
   SqliteProjectAssetStore,
+  SqliteDrawerAssetStore,
 } from '../store/collab/index.js';
 import { resolveTrustedUserId } from '../security/trusted-user.js';
 import { getEnvironment } from '../runtime/environment.js';
@@ -20,6 +21,10 @@ const membershipStore = new SqliteMembershipStore();
 const projectStore = new SqliteProjectStore();
 const drawerStore = new SqliteDrawerStore();
 const projectAssetStore = new SqliteProjectAssetStore();
+const drawerAssetStore = new SqliteDrawerAssetStore();
+
+const ASSET_KINDS = ['agent', 'skill', 'tool', 'prompt'] as const;
+type AssetKind = typeof ASSET_KINDS[number];
 
 function currentUser(headers: Headers): string {
   const env = getEnvironment();
@@ -214,6 +219,76 @@ workspacesRoute.delete('/orgs/:orgId/members/:userId', async (c) => {
     outcome: 'success',
     metadata: { targetUserId },
   });
+  return c.json({ ok: true });
+});
+
+/**
+ * GET /api/drawer/assets — caller's drawer-registered assets.
+ */
+workspacesRoute.get('/drawer/assets', async (c) => {
+  const userId = currentUser(new Headers(c.req.raw.headers));
+  await drawerStore.ensureDrawer(userId);
+  const assets = await drawerAssetStore.list(userId);
+  return c.json({ assets });
+});
+
+/**
+ * POST /api/drawer/assets { assetKind, assetId, displayName, notes? }
+ * Upsert — re-posting with the same kind+id updates displayName/notes.
+ */
+workspacesRoute.post('/drawer/assets', async (c) => {
+  const userId = currentUser(new Headers(c.req.raw.headers));
+  await drawerStore.ensureDrawer(userId);
+
+  let body: {
+    assetKind?: unknown;
+    assetId?: unknown;
+    displayName?: unknown;
+    notes?: unknown;
+  };
+  try {
+    body = (await c.req.json()) as typeof body;
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+
+  const kind = ASSET_KINDS.find(k => k === body.assetKind);
+  if (!kind) {
+    return c.json(
+      { error: `assetKind must be one of: ${ASSET_KINDS.join(', ')}` },
+      400,
+    );
+  }
+  const assetId =
+    typeof body.assetId === 'string' && body.assetId.trim()
+      ? body.assetId.trim()
+      : null;
+  if (!assetId) return c.json({ error: 'assetId is required' }, 400);
+  const displayName =
+    typeof body.displayName === 'string' && body.displayName.trim()
+      ? body.displayName.trim()
+      : assetId;
+  const notes = typeof body.notes === 'string' ? body.notes : undefined;
+
+  const asset = await drawerAssetStore.register({
+    userId,
+    assetKind: kind,
+    assetId,
+    displayName,
+    ...(notes !== undefined ? { notes } : {}),
+  });
+  return c.json(asset, 201);
+});
+
+/**
+ * DELETE /api/drawer/assets/:kind/:id
+ */
+workspacesRoute.delete('/drawer/assets/:kind/:id', async (c) => {
+  const userId = currentUser(new Headers(c.req.raw.headers));
+  const kind = ASSET_KINDS.find(k => k === c.req.param('kind'));
+  if (!kind) return c.json({ error: 'invalid asset kind' }, 400);
+  const ok = await drawerAssetStore.remove(userId, kind, c.req.param('id'));
+  if (!ok) return c.json({ error: 'asset not found' }, 404);
   return c.json({ ok: true });
 });
 
