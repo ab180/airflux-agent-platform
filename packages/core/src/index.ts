@@ -41,6 +41,9 @@ export { EchoAgent } from './agents/echo-agent.js';
 // Config
 export { loadConfig, loadConfigOptional, saveConfig, setSettingsDir, getSettingsDir, clearConfigCache } from './config/loader.js';
 export { loadAgentInstructions, listAgentInstructions } from './config/instructions.js';
+export { parseFrontmatter } from './config/frontmatter.js';
+export type { ParsedFrontmatter } from './config/frontmatter.js';
+export { loadSkillsFromMarkdownDir } from './config/skill-md-loader.js';
 
 // Providers
 export { createProvider, provider } from './providers/index.js';
@@ -58,6 +61,12 @@ export type {
   RouteResult,
   AgentRouterOptions,
 } from './routing/router.js';
+export { createNetworkState } from './routing/network-state.js';
+export type {
+  NetworkState,
+  RoutingHistoryEntry,
+  CreateNetworkStateOptions,
+} from './routing/network-state.js';
 
 // Utils
 export { normalizeKoreanTime, extractTimeExpressions } from './utils/korean-time.js';

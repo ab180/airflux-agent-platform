@@ -1,4 +1,5 @@
 import { AgentRegistry } from '../registries/agent-registry.js';
+import type { NetworkState } from './network-state.js';
 
 export interface RoutingRule {
   agent: string;
@@ -31,7 +32,11 @@ export interface RouteResult {
 }
 
 export interface AgentRouterOptions {
-  llmRouter?: (query: string, candidates: RoutingCandidate[]) => Promise<LLMRouteDecision | null>;
+  llmRouter?: (
+    query: string,
+    candidates: RoutingCandidate[],
+    state?: NetworkState,
+  ) => Promise<LLMRouteDecision | null>;
 }
 
 export class AgentRouter {
@@ -61,29 +66,30 @@ export class AgentRouter {
     }
   }
 
-  async route(query: string): Promise<RouteResult> {
+  async route(query: string, state?: NetworkState): Promise<RouteResult> {
     const lowerQuery = query.toLowerCase();
 
     for (const rule of this.rules) {
-      // Check if agent exists and is enabled
       const agent = AgentRegistry.getOptional(rule.agent);
       if (!agent || !agent.isEnabled()) continue;
 
-      // Check keywords
       if (rule.keywords) {
         for (const kw of rule.keywords) {
           if (lowerQuery.includes(kw.toLowerCase())) {
-            return { agent: rule.agent, matchedRule: `keyword:${kw}` };
+            const reason = `keyword:${kw}`;
+            state?.pushAgent(rule.agent, reason);
+            return { agent: rule.agent, matchedRule: reason };
           }
         }
       }
 
-      // Check regex patterns
       const patterns = this.compiledPatterns.get(rule.agent);
       if (patterns) {
         for (const pattern of patterns) {
           if (pattern.test(query)) {
-            return { agent: rule.agent, matchedRule: `pattern:${pattern.source}` };
+            const reason = `pattern:${pattern.source}`;
+            state?.pushAgent(rule.agent, reason);
+            return { agent: rule.agent, matchedRule: reason };
           }
         }
       }
@@ -96,10 +102,11 @@ export class AgentRouter {
       }));
 
       if (candidates.length > 0) {
-        const decision = await this.llmRouter(query, candidates);
+        const decision = await this.llmRouter(query, candidates, state);
         if (decision?.agent) {
           const selected = AgentRegistry.getOptional(decision.agent);
           if (selected?.isEnabled()) {
+            state?.pushAgent(decision.agent, `llm:${decision.reason ?? 'selected'}`);
             return {
               agent: decision.agent,
               matchedRule: null,
@@ -111,15 +118,15 @@ export class AgentRouter {
       }
     }
 
-    // Fallback
     const fallbackAgent = AgentRegistry.getOptional(this.fallback);
     if (fallbackAgent?.isEnabled()) {
+      state?.pushAgent(this.fallback, 'fallback');
       return { agent: this.fallback, matchedRule: null };
     }
 
-    // Last resort: first enabled agent
     const enabled = AgentRegistry.listEnabled();
     if (enabled.length > 0) {
+      state?.pushAgent(enabled[0].name, 'first-enabled');
       return { agent: enabled[0].name, matchedRule: null };
     }
 

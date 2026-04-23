@@ -37,6 +37,10 @@ export interface SkillDefinition {
   description: string;
   requiredTools: string[];
   guardrails: string[];
+  /** Optional routing triggers (OpenHands/Anthropic Skills-compatible). */
+  triggers?: string[];
+  /** Optional prompt/instructions body (markdown when loaded from .md). */
+  instructions?: string;
 }
 
 /**
