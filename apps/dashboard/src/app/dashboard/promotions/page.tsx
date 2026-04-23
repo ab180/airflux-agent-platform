@@ -1,8 +1,10 @@
 import { Badge } from "@/components/ui/badge";
+import { PromotionRequestForm } from "@/components/dashboard/promotion-request-form";
 import {
   fetchAPISafe,
   type PromotionRecord,
   type PromotionState,
+  type WorkspaceResponse,
 } from "@/lib/api";
 
 const STATE_LABEL: Record<PromotionState, string> = {
@@ -36,6 +38,13 @@ export default async function MyPromotionsPage() {
     "/api/promotions/mine",
     { promotions: [] },
   );
+  const workspace = await fetchAPISafe<WorkspaceResponse>("/api/workspaces", {
+    userId: "local",
+    runMode: "local",
+    drawer: { userId: "local", createdAt: "" },
+    orgs: [],
+  });
+  const allProjects = workspace.orgs.flatMap((o) => o.projects);
 
   const grouped: Record<PromotionState, PromotionRecord[]> = {
     "personal-draft": [],
@@ -48,11 +57,14 @@ export default async function MyPromotionsPage() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-lg font-semibold tracking-tight">내 Promotions</h1>
-        <p className="text-[13px] text-muted-foreground">
-          내가 요청한 모든 승격 요청 — 상태별로 정리됨
-        </p>
+      <header className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-lg font-semibold tracking-tight">내 Promotions</h1>
+          <p className="text-[13px] text-muted-foreground">
+            내가 요청한 모든 승격 요청 — 상태별로 정리됨
+          </p>
+        </div>
+        <PromotionRequestForm projects={allProjects} />
       </header>
 
       {promotions.length === 0 ? (
