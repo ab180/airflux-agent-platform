@@ -5,22 +5,9 @@
  */
 
 import { getDb } from './db.js';
+import type { ExecutionStatus, ExecutionState } from '@airflux/runtime';
 
-export type ExecutionStatus = 'pending' | 'running' | 'completed' | 'failed' | 'timeout';
-
-export interface ExecutionState {
-  id: string;
-  agent: string;
-  query: string;
-  userId: string;
-  source: string;
-  status: ExecutionStatus;
-  startedAt: string;
-  completedAt: string | null;
-  durationMs: number | null;
-  error: string | null;
-  retryCount: number;
-}
+export type { ExecutionStatus, ExecutionState };
 
 let initialized = false;
 

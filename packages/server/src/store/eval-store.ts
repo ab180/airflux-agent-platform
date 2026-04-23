@@ -1,38 +1,7 @@
 import { getDb } from './db.js';
+import type { GoldenTestCase, EvalRun, EvalResult } from '@airflux/runtime';
 
-export interface GoldenTestCase {
-  id: number;
-  agent: string;
-  category: string;
-  difficulty: 'easy' | 'medium' | 'hard';
-  question: string;
-  expectedAgent?: string;
-  expectedContains?: string;
-  rubric?: string;
-  enabled: boolean;
-}
-
-export interface EvalRun {
-  id: number;
-  timestamp: string;
-  totalCases: number;
-  passed: number;
-  failed: number;
-  score: number;
-  results: EvalResult[];
-}
-
-export interface EvalResult {
-  caseId: number;
-  question: string;
-  expectedAgent?: string;
-  actualAgent: string;
-  expectedContains?: string;
-  actualResponse: string;
-  passed: boolean;
-  reason: string;
-  durationMs: number;
-}
+export type { GoldenTestCase, EvalRun, EvalResult };
 
 let initialized = false;
 

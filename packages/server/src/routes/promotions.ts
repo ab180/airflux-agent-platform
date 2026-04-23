@@ -1,0 +1,270 @@
+import { Hono } from 'hono';
+import type { Context } from 'hono';
+import type { AssetPromotionRecord } from '@airflux/runtime';
+import {
+  SqliteMembershipStore,
+  SqliteOrgStore,
+  SqlitePromotionStore,
+  SqliteProjectStore,
+  SqliteProjectAssetStore,
+  SqliteDrawerAssetStore,
+} from '../store/collab/index.js';
+import { resolveTrustedUserId } from '../security/trusted-user.js';
+import { getEnvironment } from '../runtime/environment.js';
+import { getDb } from '../store/db.js';
+import { logAudit } from '../store/audit-log.js';
+
+export const promotionsRoute = new Hono();
+
+const promotionStore = new SqlitePromotionStore();
+const projectStore = new SqliteProjectStore();
+const orgStore = new SqliteOrgStore();
+const membershipStore = new SqliteMembershipStore();
+const projectAssetStore = new SqliteProjectAssetStore();
+const drawerAssetStore = new SqliteDrawerAssetStore();
+
+function currentUser(headers: Headers): string {
+  const env = getEnvironment();
+  return env.runMode === 'local' ? 'local' : resolveTrustedUserId(headers, 'anonymous');
+}
+
+const ASSET_KINDS: readonly AssetPromotionRecord['assetKind'][] = [
+  'agent', 'skill', 'tool', 'prompt',
+] as const;
+
+/**
+ * Resolve the target project id of a promotion without exposing
+ * getRecord on the store interface. Used to enforce maintainer RBAC.
+ */
+function lookupTargetProjectId(promotionId: string): string | null {
+  const row = getDb()
+    .prepare(
+      `SELECT to_scope_ref AS ref FROM asset_promotions
+       WHERE id = ? AND to_scope_kind = 'project'`,
+    )
+    .get(promotionId) as { ref: string } | undefined;
+  return row?.ref ?? null;
+}
+
+/**
+ * POST /api/promotions/request { assetKind, assetId, toProjectId, notes? }
+ * Creates an under-review promotion from the caller's drawer into the target
+ * project. Caller must belong to the target project's org.
+ */
+promotionsRoute.post('/promotions/request', async (c) => {
+  let body: {
+    assetKind?: unknown;
+    assetId?: unknown;
+    toProjectId?: unknown;
+    notes?: unknown;
+  };
+  try {
+    body = (await c.req.json()) as typeof body;
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+
+  const assetKind = ASSET_KINDS.find(k => k === body.assetKind);
+  if (!assetKind) {
+    return c.json(
+      { error: `assetKind must be one of: ${ASSET_KINDS.join(', ')}` },
+      400,
+    );
+  }
+  const assetId =
+    typeof body.assetId === 'string' && body.assetId.trim()
+      ? body.assetId.trim()
+      : null;
+  if (!assetId) return c.json({ error: 'assetId is required' }, 400);
+
+  const toProjectId =
+    typeof body.toProjectId === 'string' && body.toProjectId.trim()
+      ? body.toProjectId.trim()
+      : null;
+  if (!toProjectId) return c.json({ error: 'toProjectId is required' }, 400);
+
+  const notes = typeof body.notes === 'string' ? body.notes : undefined;
+  const userId = currentUser(new Headers(c.req.raw.headers));
+
+  const project = await projectStore.getProject(toProjectId);
+  if (!project) return c.json({ error: 'project not found' }, 404);
+
+  const userOrgs = await orgStore.listOrgsForUser(userId);
+  if (!userOrgs.some(o => o.id === project.orgId)) {
+    return c.json({ error: 'not a member of the target project org' }, 403);
+  }
+
+  // If the user has any drawer assets registered, require the promoted
+  // asset to be one of them. This catches typos early. Users with an
+  // empty drawer can still promote free-form ids (backward compat for
+  // external flows that haven't adopted the drawer yet).
+  const drawerAssets = await drawerAssetStore.list(userId);
+  const kindMatches = drawerAssets.filter(a => a.assetKind === assetKind);
+  if (kindMatches.length > 0 && !kindMatches.some(a => a.assetId === assetId)) {
+    return c.json(
+      {
+        error:
+          `'${assetId}' is not registered in your drawer for kind '${assetKind}'. ` +
+          `Register it at POST /api/drawer/assets first, or pick one of: ` +
+          kindMatches.map(a => a.assetId).join(', '),
+      },
+      400,
+    );
+  }
+
+  const record = await promotionStore.request({
+    assetKind,
+    assetId,
+    fromScope: { kind: 'drawer', userId },
+    toScope: { kind: 'project', projectId: toProjectId },
+    requestedBy: userId,
+    ...(notes !== undefined ? { notes } : {}),
+  });
+  logAudit({
+    userId,
+    action: 'promotion.request',
+    resource: `promotion:${record.id}`,
+    outcome: 'success',
+    metadata: {
+      assetKind: record.assetKind,
+      assetId: record.assetId,
+      toProjectId,
+    },
+  });
+  return c.json(record, 201);
+});
+
+/**
+ * GET /api/promotions/mine — caller's own requests (every state).
+ * Gives the requester a timeline of "what did I ask to promote, and
+ * where is each one in the review cycle?" — drawer-owner visibility
+ * orthogonal to the project-maintainer queue below.
+ */
+promotionsRoute.get('/promotions/mine', async (c) => {
+  const userId = currentUser(new Headers(c.req.raw.headers));
+  const rows = getDb()
+    .prepare(
+      `SELECT id, asset_kind, asset_id, from_scope_kind, from_scope_ref,
+              to_scope_kind, to_scope_ref, state, requested_by,
+              reviewed_by, decided_at, notes
+       FROM asset_promotions
+       WHERE requested_by = ?
+       ORDER BY created_at DESC, rowid DESC`,
+    )
+    .all(userId) as Array<{
+      id: string; asset_kind: AssetPromotionRecord['assetKind']; asset_id: string;
+      from_scope_kind: 'drawer' | 'project'; from_scope_ref: string;
+      to_scope_kind: 'drawer' | 'project'; to_scope_ref: string;
+      state: AssetPromotionRecord['state']; requested_by: string;
+      reviewed_by: string | null; decided_at: string | null; notes: string | null;
+    }>;
+  const promotions: AssetPromotionRecord[] = rows.map((r) => {
+    const from: AssetPromotionRecord['fromScope'] =
+      r.from_scope_kind === 'drawer'
+        ? { kind: 'drawer', userId: r.from_scope_ref }
+        : { kind: 'project', projectId: r.from_scope_ref };
+    const to: AssetPromotionRecord['toScope'] =
+      r.to_scope_kind === 'drawer'
+        ? { kind: 'drawer', userId: r.to_scope_ref }
+        : { kind: 'project', projectId: r.to_scope_ref };
+    const rec: AssetPromotionRecord = {
+      id: r.id, assetKind: r.asset_kind, assetId: r.asset_id,
+      fromScope: from, toScope: to, state: r.state, requestedBy: r.requested_by,
+    };
+    if (r.reviewed_by) rec.reviewedBy = r.reviewed_by;
+    if (r.decided_at) rec.decidedAt = r.decided_at;
+    if (r.notes) rec.notes = r.notes;
+    return rec;
+  });
+  return c.json({ promotions });
+});
+
+/**
+ * GET /api/promotions?projectId=... — pending promotions for a project.
+ * Caller must be a project member of any role.
+ */
+promotionsRoute.get('/promotions', async (c) => {
+  const projectId = c.req.query('projectId');
+  if (!projectId) return c.json({ error: 'projectId query param required' }, 400);
+
+  const userId = currentUser(new Headers(c.req.raw.headers));
+  const role = await membershipStore.userRoleInProject(userId, projectId);
+  if (!role) {
+    return c.json({ error: 'not a member of this project' }, 403);
+  }
+
+  const pending = await promotionStore.listPending(projectId);
+  return c.json({ promotions: pending });
+});
+
+promotionsRoute.post('/promotions/:id/approve', (c) => handleTransition(c, 'approve'));
+promotionsRoute.post('/promotions/:id/reject',  (c) => handleTransition(c, 'reject'));
+
+async function handleTransition(c: Context, op: 'approve' | 'reject'): Promise<Response> {
+  const id = c.req.param('id');
+  if (!id) return c.json({ error: 'missing id' }, 400);
+
+  let notes: string | undefined;
+  try {
+    const body = (await c.req.json()) as { notes?: unknown };
+    if (typeof body?.notes === 'string') notes = body.notes;
+  } catch {
+    // body optional
+  }
+
+  const projectId = lookupTargetProjectId(id);
+  if (!projectId) return c.json({ error: 'promotion not found' }, 404);
+
+  const userId = currentUser(new Headers(c.req.raw.headers));
+  const role = await membershipStore.userRoleInProject(userId, projectId);
+  if (role !== 'maintainer') {
+    return c.json({ error: 'only project maintainers can decide promotions' }, 403);
+  }
+
+  try {
+    const rec =
+      op === 'approve'
+        ? await promotionStore.approve(id, userId, notes)
+        : await promotionStore.reject(id, userId, notes);
+
+    // On approve, publish the asset to the target project. This doesn't
+    // move config (still lives in markdown/YAML/registry); it records
+    // "this project is running this asset", so dashboard can surface
+    // published assets and later scoped execution can gate by this table.
+    if (op === 'approve' && rec.toScope.kind === 'project' && rec.fromScope.kind === 'drawer') {
+      await projectAssetStore.publish({
+        projectId: rec.toScope.projectId!,
+        assetKind: rec.assetKind,
+        assetId: rec.assetId,
+        promotedFromDrawer: rec.fromScope.userId!,
+        promotionId: rec.id,
+      });
+    }
+
+    logAudit({
+      userId,
+      action: `promotion.${op}`,
+      resource: `promotion:${rec.id}`,
+      outcome: 'success',
+      metadata: {
+        assetKind: rec.assetKind,
+        assetId: rec.assetId,
+        projectId,
+        state: rec.state,
+      },
+    });
+    return c.json(rec, 200);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logAudit({
+      userId,
+      action: `promotion.${op}`,
+      resource: `promotion:${id}`,
+      outcome: 'failure',
+      metadata: { error: msg, projectId },
+    });
+    if (/not found/i.test(msg)) return c.json({ error: msg }, 404);
+    if (/state/i.test(msg)) return c.json({ error: msg }, 409);
+    throw err;
+  }
+}

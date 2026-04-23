@@ -1,19 +1,7 @@
 import { getDb } from './db.js';
+import type { RequestLog, LogQuery } from '@airflux/runtime';
 
-export interface RequestLog {
-  id: string;
-  timestamp: string;
-  agent: string;
-  query: string;
-  userId: string;
-  source: string;
-  success: boolean;
-  responseText: string | null;
-  errorMessage: string | null;
-  durationMs: number;
-  inputTokens: number | null;
-  outputTokens: number | null;
-}
+export type { RequestLog, LogQuery };
 
 let initialized = false;
 
@@ -67,14 +55,6 @@ export function insertLog(log: RequestLog): void {
   );
 }
 
-export interface LogQuery {
-  limit?: number;
-  offset?: number;
-  agent?: string;
-  success?: boolean;
-  startDate?: string;
-  endDate?: string;
-}
 
 export function queryLogs(opts: LogQuery = {}): { logs: RequestLog[]; total: number } {
   ensureTables();

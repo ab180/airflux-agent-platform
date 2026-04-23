@@ -89,3 +89,84 @@ export interface OverviewResponse {
   llm: { available: boolean; hint?: string };
   alerts: { type: string; message: string; time: string }[];
 }
+
+// ─── Collaboration primitives (v2) ────────────────────────────────
+
+export type ProjectType = "code-repo" | "docs" | "objective";
+export type ProjectVisibility = "private" | "internal" | "public";
+export type ProjectRole = "maintainer" | "contributor" | "runner" | "viewer";
+export type OrgRole = "admin" | "member" | "viewer";
+export type PromotionState =
+  | "personal-draft"
+  | "under-review"
+  | "published"
+  | "deprecated"
+  | "archived";
+
+export interface WorkspaceProject {
+  id: string;
+  orgId: string;
+  slug: string;
+  name: string;
+  type: ProjectType;
+  visibility: ProjectVisibility;
+  createdAt: string;
+  externalRef?: string;
+}
+
+export interface WorkspaceOrg {
+  id: string;
+  slug: string;
+  name: string;
+  createdAt: string;
+  projects: WorkspaceProject[];
+}
+
+export interface WorkspaceDrawer {
+  userId: string;
+  createdAt: string;
+}
+
+export interface WorkspaceResponse {
+  userId: string;
+  runMode: "local" | "team";
+  drawer: WorkspaceDrawer;
+  orgs: WorkspaceOrg[];
+}
+
+export interface PromotionScope {
+  kind: "drawer" | "project";
+  userId?: string;
+  projectId?: string;
+}
+
+export interface PromotionRecord {
+  id: string;
+  assetKind: "agent" | "skill" | "tool" | "prompt";
+  assetId: string;
+  fromScope: PromotionScope;
+  toScope: PromotionScope;
+  state: PromotionState;
+  requestedBy: string;
+  reviewedBy?: string;
+  decidedAt?: string;
+  notes?: string;
+}
+
+export interface PublishedAsset {
+  projectId: string;
+  assetKind: "agent" | "skill" | "tool" | "prompt";
+  assetId: string;
+  promotedFromDrawer: string;
+  promotionId: string;
+  publishedAt: string;
+}
+
+export interface DrawerAsset {
+  userId: string;
+  assetKind: "agent" | "skill" | "tool" | "prompt";
+  assetId: string;
+  displayName: string;
+  notes?: string;
+  createdAt: string;
+}

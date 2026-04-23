@@ -1,0 +1,44 @@
+{
+  "name": "@airflux/runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./storage": {
+      "import": "./dist/storage/index.js",
+      "types": "./dist/storage/index.d.ts"
+    },
+    "./scheduler": {
+      "import": "./dist/scheduler/index.js",
+      "types": "./dist/scheduler/index.d.ts"
+    },
+    "./observability": {
+      "import": "./dist/observability/index.js",
+      "types": "./dist/observability/index.d.ts"
+    },
+    "./collab": {
+      "import": "./dist/collab/index.js",
+      "types": "./dist/collab/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@airflux/core": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.0.0"
+  }
+}

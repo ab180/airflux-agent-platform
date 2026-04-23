@@ -1,20 +1,9 @@
 import { getDb } from './db.js';
 import { cleanExpiredSessions } from './session-store.js';
 import { statSync } from 'fs';
+import type { TableInfo, DbHealth, CleanupResult } from '@airflux/runtime';
 
-export interface TableInfo {
-  name: string;
-  rowCount: number;
-}
-
-export interface DbHealth {
-  status: 'ok' | 'error';
-  path: string;
-  sizeBytes: number;
-  sizeHuman: string;
-  walMode: boolean;
-  tables: TableInfo[];
-}
+export type { TableInfo, DbHealth, CleanupResult };
 
 export function getDbHealth(): DbHealth {
   const db = getDb();
@@ -53,12 +42,6 @@ export function getDbHealth(): DbHealth {
     walMode: journalMode === 'wal',
     tables,
   };
-}
-
-export interface CleanupResult {
-  expiredSessions: number;
-  oldLogs: number;
-  oldEvalRuns: number;
 }
 
 export function cleanupDb(maxLogDays: number = 30, maxSessionHours: number = 24): CleanupResult {

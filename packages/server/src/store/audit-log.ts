@@ -1,36 +1,23 @@
 /**
- * Audit log — append-only record of security-relevant events.
+ * SQLite adapter for AuditLogStore (interface declared in @airflux/runtime).
  *
- * Captures who did what, when, and whether it succeeded. Not the same as
- * request_logs (which tracks agent queries for performance/debugging) —
- * audit_log is for compliance, incident response, and "who changed this?"
- * investigations.
- *
- * Events to log: admin auth success/failure, MCP token create/delete,
- * prompt version changes, agent config changes, eval runs started.
- * Do NOT log query bodies here (use request_logs for that).
+ * Append-only record of security-relevant events — admin auth, token
+ * create/delete, prompt/config changes. Distinct from request_logs which
+ * tracks agent queries for performance/debugging. Do NOT put query bodies
+ * here; use request_logs for that.
  */
 
 import { randomUUID } from 'crypto';
+import type {
+  AuditEvent,
+  AuditRow,
+  AuditOutcome,
+  QueryAuditOpts,
+} from '@airflux/runtime';
 import { getDb } from './db.js';
 import { logger } from '../lib/logger.js';
 
-export type AuditOutcome = 'success' | 'failure';
-
-export interface AuditEvent {
-  userId: string;
-  action: string;
-  resource?: string;
-  outcome: AuditOutcome;
-  ip?: string;
-  userAgent?: string;
-  metadata?: Record<string, unknown>;
-}
-
-export interface AuditRow extends AuditEvent {
-  id: string;
-  timestamp: string;
-}
+export type { AuditEvent, AuditRow, AuditOutcome, QueryAuditOpts };
 
 let initialized = false;
 
@@ -86,16 +73,6 @@ export function logAudit(event: AuditEvent): void {
       error: e instanceof Error ? e.message : String(e),
     });
   }
-}
-
-export interface QueryAuditOpts {
-  limit?: number;
-  offset?: number;
-  userId?: string;
-  action?: string;
-  outcome?: AuditOutcome;
-  startDate?: string;
-  endDate?: string;
 }
 
 export function queryAudit(opts: QueryAuditOpts = {}): { events: AuditRow[]; total: number } {

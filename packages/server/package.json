@@ -14,6 +14,7 @@
     "@ai-sdk/anthropic": "^2.0.0",
     "@ai-sdk/openai": "^3.0.53",
     "@airflux/core": "*",
+    "@airflux/runtime": "*",
     "@hono/node-server": "^1.14.0",
     "@types/pg": "^8.20.0",
     "ai": "^6.0.0",
