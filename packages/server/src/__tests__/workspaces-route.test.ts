@@ -178,6 +178,77 @@ describe('POST /api/orgs', () => {
   });
 });
 
+describe('org member management', () => {
+  beforeEach(() => {
+    cleanAll();
+    vi.unstubAllEnvs();
+    resetEnvironmentCache();
+    vi.stubEnv('AIROPS_MODE', 'local');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    resetEnvironmentCache();
+  });
+
+  async function seedOrgWithLocalAdmin() {
+    const org = await orgStore.createOrg({ slug: 'o', name: 'O' });
+    await membershipStore.addOrgMember({ orgId: org.id, userId: 'local', role: 'admin' });
+    return org;
+  }
+
+  it('GET lists members for admin', async () => {
+    const org = await seedOrgWithLocalAdmin();
+    await membershipStore.addOrgMember({ orgId: org.id, userId: 'alice', role: 'member' });
+    const res = await makeApp().request(`/api/orgs/${org.id}/members`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { members: Array<{ userId: string }> };
+    expect(body.members).toHaveLength(2);
+  });
+
+  it('POST adds a member', async () => {
+    const org = await seedOrgWithLocalAdmin();
+    const res = await makeApp().request(`/api/orgs/${org.id}/members`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ userId: 'bob', role: 'member' }),
+    });
+    expect(res.status).toBe(201);
+    const members = await membershipStore.listOrgMembers(org.id);
+    expect(members).toHaveLength(2);
+  });
+
+  it('PATCH updates a member role', async () => {
+    const org = await seedOrgWithLocalAdmin();
+    await membershipStore.addOrgMember({ orgId: org.id, userId: 'alice', role: 'viewer' });
+    const res = await makeApp().request(`/api/orgs/${org.id}/members/alice`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ role: 'admin' }),
+    });
+    expect(res.status).toBe(200);
+    expect(await membershipStore.userRoleInOrg('alice', org.id)).toBe('admin');
+  });
+
+  it('DELETE refuses to remove the last admin', async () => {
+    const org = await seedOrgWithLocalAdmin();
+    const res = await makeApp().request(`/api/orgs/${org.id}/members/local`, {
+      method: 'DELETE',
+    });
+    expect(res.status).toBe(409);
+  });
+
+  it('403 when caller is not an org admin', async () => {
+    const org = await orgStore.createOrg({ slug: 'o', name: 'O' });
+    await membershipStore.addOrgMember({ orgId: org.id, userId: 'local', role: 'member' });
+    const res = await makeApp().request(`/api/orgs/${org.id}/members`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ userId: 'x', role: 'member' }),
+    });
+    expect(res.status).toBe(403);
+  });
+});
+
 describe('project member management', () => {
   beforeEach(() => {
     cleanAll();

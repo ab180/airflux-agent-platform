@@ -1,5 +1,7 @@
 import { Hono } from 'hono';
-import type { Org, Project, ProjectRole, ProjectType, ProjectVisibility } from '@airflux/runtime';
+import type {
+  Org, OrgRole, Project, ProjectRole, ProjectType, ProjectVisibility,
+} from '@airflux/runtime';
 import {
   SqliteOrgStore,
   SqliteMembershipStore,
@@ -29,6 +31,7 @@ const PROJECT_VISIBILITIES: readonly ProjectVisibility[] = [
 const PROJECT_ROLES: readonly ProjectRole[] = [
   'maintainer', 'contributor', 'runner', 'viewer',
 ] as const;
+const ORG_ROLES: readonly OrgRole[] = ['admin', 'member', 'viewer'] as const;
 
 function validateSlug(slug: unknown): string | null {
   if (typeof slug !== 'string') return null;
@@ -92,6 +95,124 @@ workspacesRoute.get('/projects/:projectId', async (c) => {
     callerRole: role,
     members,
   });
+});
+
+/**
+ * GET /api/orgs/:orgId/members — list members (org-admin only).
+ */
+workspacesRoute.get('/orgs/:orgId/members', async (c) => {
+  const orgId = c.req.param('orgId');
+  const caller = currentUser(new Headers(c.req.raw.headers));
+  const callerRole = await membershipStore.userRoleInOrg(caller, orgId);
+  if (callerRole !== 'admin') {
+    return c.json({ error: 'only org admins can view the member list' }, 403);
+  }
+  const members = await membershipStore.listOrgMembers(orgId);
+  return c.json({ members });
+});
+
+/**
+ * POST /api/orgs/:orgId/members  { userId, role }
+ * Org admin only.
+ */
+workspacesRoute.post('/orgs/:orgId/members', async (c) => {
+  const orgId = c.req.param('orgId');
+  const caller = currentUser(new Headers(c.req.raw.headers));
+  const callerRole = await membershipStore.userRoleInOrg(caller, orgId);
+  if (callerRole !== 'admin') {
+    return c.json({ error: 'only org admins can manage org members' }, 403);
+  }
+
+  let body: { userId?: unknown; role?: unknown };
+  try { body = (await c.req.json()) as typeof body; } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+  const targetUserId =
+    typeof body.userId === 'string' && body.userId.trim()
+      ? body.userId.trim()
+      : null;
+  if (!targetUserId) return c.json({ error: 'userId is required' }, 400);
+  const role = ORG_ROLES.find(r => r === body.role);
+  if (!role) {
+    return c.json({ error: `role must be one of: ${ORG_ROLES.join(', ')}` }, 400);
+  }
+
+  await membershipStore.addOrgMember({ orgId, userId: targetUserId, role });
+  logAudit({
+    userId: caller,
+    action: 'org.member.add',
+    resource: `org:${orgId}`,
+    outcome: 'success',
+    metadata: { targetUserId, role },
+  });
+  return c.json({ orgId, userId: targetUserId, role }, 201);
+});
+
+/**
+ * PATCH /api/orgs/:orgId/members/:userId  { role }
+ * Org admin only.
+ */
+workspacesRoute.patch('/orgs/:orgId/members/:userId', async (c) => {
+  const orgId = c.req.param('orgId');
+  const targetUserId = c.req.param('userId');
+  const caller = currentUser(new Headers(c.req.raw.headers));
+  const callerRole = await membershipStore.userRoleInOrg(caller, orgId);
+  if (callerRole !== 'admin') {
+    return c.json({ error: 'only org admins can manage org members' }, 403);
+  }
+
+  let body: { role?: unknown };
+  try { body = (await c.req.json()) as typeof body; } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+  const role = ORG_ROLES.find(r => r === body.role);
+  if (!role) {
+    return c.json({ error: `role must be one of: ${ORG_ROLES.join(', ')}` }, 400);
+  }
+
+  const ok = await membershipStore.updateOrgMemberRole(orgId, targetUserId, role);
+  if (!ok) return c.json({ error: 'member not found' }, 404);
+  logAudit({
+    userId: caller,
+    action: 'org.member.update-role',
+    resource: `org:${orgId}`,
+    outcome: 'success',
+    metadata: { targetUserId, role },
+  });
+  return c.json({ orgId, userId: targetUserId, role });
+});
+
+/**
+ * DELETE /api/orgs/:orgId/members/:userId
+ * Org admin only. Cannot remove the last admin.
+ */
+workspacesRoute.delete('/orgs/:orgId/members/:userId', async (c) => {
+  const orgId = c.req.param('orgId');
+  const targetUserId = c.req.param('userId');
+  const caller = currentUser(new Headers(c.req.raw.headers));
+  const callerRole = await membershipStore.userRoleInOrg(caller, orgId);
+  if (callerRole !== 'admin') {
+    return c.json({ error: 'only org admins can manage org members' }, 403);
+  }
+
+  const members = await membershipStore.listOrgMembers(orgId);
+  const admins = members.filter(m => m.role === 'admin');
+  const target = members.find(m => m.userId === targetUserId);
+  if (!target) return c.json({ error: 'member not found' }, 404);
+  if (target.role === 'admin' && admins.length <= 1) {
+    return c.json({ error: 'cannot remove the last admin of the org' }, 409);
+  }
+
+  const ok = await membershipStore.removeOrgMember(orgId, targetUserId);
+  if (!ok) return c.json({ error: 'member not found' }, 404);
+  logAudit({
+    userId: caller,
+    action: 'org.member.remove',
+    resource: `org:${orgId}`,
+    outcome: 'success',
+    metadata: { targetUserId },
+  });
+  return c.json({ ok: true });
 });
 
 /**

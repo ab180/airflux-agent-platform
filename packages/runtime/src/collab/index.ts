@@ -119,6 +119,15 @@ export interface ProjectStore {
 
 export interface MembershipStore {
   addOrgMember(m: Omit<OrgMembership, 'joinedAt'>): Promise<void>;
+  updateOrgMemberRole(
+    orgId: string,
+    userId: string,
+    role: OrgRole,
+  ): Promise<boolean>;
+  removeOrgMember(orgId: string, userId: string): Promise<boolean>;
+  listOrgMembers(orgId: string): Promise<OrgMembership[]>;
+  userRoleInOrg(userId: string, orgId: string): Promise<OrgRole | null>;
+
   addProjectMember(m: Omit<ProjectMembership, 'joinedAt'>): Promise<void>;
   updateProjectMemberRole(
     projectId: string,
