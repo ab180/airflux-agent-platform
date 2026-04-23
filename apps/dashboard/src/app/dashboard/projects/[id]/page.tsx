@@ -3,12 +3,14 @@ import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { PromotionDecision } from "@/components/dashboard/promotion-decision";
 import { MemberManager } from "@/components/dashboard/member-manager";
+import { PublishedAssetsList } from "@/components/dashboard/published-assets-list";
 import {
   fetchAPI,
   fetchAPISafe,
   type ProjectRole,
   type ProjectType,
   type PromotionRecord,
+  type PublishedAsset,
   type WorkspaceProject,
   type WorkspaceResponse,
 } from "@/lib/api";
@@ -56,6 +58,10 @@ export default async function ProjectDetailPage({
   const { promotions } = await fetchAPISafe<{ promotions: PromotionRecord[] }>(
     `/api/promotions?projectId=${encodeURIComponent(id)}`,
     { promotions: [] },
+  );
+  const { assets } = await fetchAPISafe<{ assets: PublishedAsset[] }>(
+    `/api/projects/${encodeURIComponent(id)}/assets`,
+    { assets: [] },
   );
   // workspaces API happens to expose the caller's userId — reuse it for the
   // "can't demote yourself" guard inside MemberManager.
@@ -124,6 +130,18 @@ export default async function ProjectDetailPage({
             role: m.role,
             joinedAt: m.joinedAt,
           }))}
+        />
+      </section>
+
+      {/* Published assets */}
+      <section>
+        <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+          Published 자산 ({assets.length})
+        </h2>
+        <PublishedAssetsList
+          projectId={detail.project.id}
+          assets={assets}
+          canManage={isMaintainer}
         />
       </section>
 

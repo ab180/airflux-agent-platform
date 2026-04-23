@@ -152,3 +152,12 @@ export interface PromotionRecord {
   decidedAt?: string;
   notes?: string;
 }
+
+export interface PublishedAsset {
+  projectId: string;
+  assetKind: "agent" | "skill" | "tool" | "prompt";
+  assetId: string;
+  promotedFromDrawer: string;
+  promotionId: string;
+  publishedAt: string;
+}
