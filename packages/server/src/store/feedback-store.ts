@@ -1,5 +1,6 @@
 import { getDb } from './db.js';
 import { getEnvironment, type StorageStrategy } from '../runtime/environment.js';
+import type { Feedback, FeedbackDetail, FeedbackRating } from '@airflux/runtime';
 
 /**
  * Which backend the feedback store currently uses.
@@ -10,15 +11,7 @@ export function getFeedbackStoreBackend(): StorageStrategy {
   return getEnvironment().storageStrategy;
 }
 
-export interface Feedback {
-  id: string;
-  traceId: string;
-  rating: 'positive' | 'negative';
-  comment: string | null;
-  userId: string;
-  agent: string;
-  timestamp: string;
-}
+export type { Feedback, FeedbackDetail, FeedbackRating };
 
 let initialized = false;
 
@@ -57,12 +50,6 @@ export function insertFeedback(feedback: Feedback): void {
     feedback.agent,
     feedback.timestamp,
   );
-}
-
-export interface FeedbackDetail extends Feedback {
-  query: string | null;
-  responseText: string | null;
-  durationMs: number | null;
 }
 
 export function getFeedbackDetail(traceId: string): FeedbackDetail | null {

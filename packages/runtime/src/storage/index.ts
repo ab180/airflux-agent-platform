@@ -6,3 +6,9 @@ export type {
   QueryAuditOpts,
   AuditLogStore,
 } from './audit-log.js';
+export type {
+  FeedbackRating,
+  Feedback,
+  FeedbackDetail,
+  FeedbackStore,
+} from './feedback.js';
