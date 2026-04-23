@@ -54,7 +54,8 @@ export function evaluateLLMHealth(input: LLMHealthInput): LLMHealthResult {
         hoursExpired,
         hint:
           `Claude OAuth 크레덴셜이 ${hoursExpired}시간 전에 만료되었습니다. ` +
-          '호스트에서 `claude login` 재실행 후 서버 재시작하세요.',
+          '호스트 터미널에서 `bash scripts/sync-claude.sh` 실행하세요. ' +
+          '(Keychain의 최신 토큰을 컨테이너로 동기화 + 서버 재시작)',
       };
     }
     return {
@@ -72,8 +73,8 @@ export function evaluateLLMHealth(input: LLMHealthInput): LLMHealthResult {
       verified: false,
       expired: false,
       hint:
-        'ANTHROPIC_AUTH_TOKEN 환경변수만 있어 만료 여부를 로컬에서 확인할 수 없습니다. ' +
-        'auth 오류가 발생하면 `claude login`으로 credentials.json을 갱신하세요.',
+        'ANTHROPIC_AUTH_TOKEN 환경변수만 있고 credentials.json이 없어 만료 여부를 확인할 수 없습니다. ' +
+        '호스트 터미널에서 `bash scripts/sync-claude.sh` 실행하면 Keychain의 최신 토큰을 동기화합니다.',
     };
   }
 
@@ -83,6 +84,7 @@ export function evaluateLLMHealth(input: LLMHealthInput): LLMHealthResult {
     verified: true,
     expired: false,
     hint:
-      'LLM 크레덴셜이 설정되지 않았습니다. ANTHROPIC_API_KEY 환경변수를 설정하거나 호스트에서 `claude login`을 실행하세요.',
+      'LLM 크레덴셜이 설정되지 않았습니다. 호스트에서 `claude login` 후 ' +
+      '`bash scripts/sync-claude.sh` 실행, 또는 `.env`에 ANTHROPIC_API_KEY를 추가하세요.',
   };
 }

@@ -8,6 +8,7 @@ import { rateLimit } from './middleware/rate-limit.js';
 import { queryRoute } from './routes/query.js';
 import { queryStreamRoute } from './routes/query-stream.js';
 import { queryUnderstandRoute } from './routes/query-understand.js';
+import { routePreviewRoute } from './routes/route-preview.js';
 import { feedbackRoute } from './routes/feedback.js';
 import { adminRoutes } from './routes/admin.js';
 import { healthRoute } from './routes/health.js';
@@ -55,6 +56,9 @@ app.route('/api', queryStreamRoute);
 
 // Lightweight query understanding preview (Korean time + domain glossary)
 app.route('/api', queryUnderstandRoute);
+
+// Prompt-aware provider/tier/effort routing preview (no LLM call)
+app.route('/api', routePreviewRoute);
 
 // Feedback endpoint (user-facing)
 app.use('/api/feedback', bodyLimit(10_000));

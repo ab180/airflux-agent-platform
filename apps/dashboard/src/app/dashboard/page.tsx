@@ -139,7 +139,7 @@ export default async function DashboardOverview() {
               <div className="flex items-center gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3.5 py-2.5">
                 <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" role="status" aria-label="경고" />
                 <div className="flex-1 min-w-0">
-                  <p className="text-[12px] text-amber-200">
+                  <p className="text-[12px] text-amber-700 dark:text-amber-200">
                     LLM 연결 안 됨
                   </p>
                   <p className="mt-0.5 text-[11px] text-muted-foreground">
@@ -152,7 +152,7 @@ export default async function DashboardOverview() {
             {execStats.stale > 0 && (
               <div className="flex items-center gap-2.5 rounded-lg border border-red-500/30 bg-red-500/5 px-3.5 py-2.5">
                 <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-400" role="status" aria-label="경고" />
-                <p className="text-[12px] text-red-200">
+                <p className="text-[12px] text-red-700 dark:text-red-200">
                   {execStats.stale}개 실행이 응답 없음 (크래시 의심)
                 </p>
               </div>

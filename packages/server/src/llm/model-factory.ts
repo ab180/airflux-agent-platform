@@ -1,5 +1,5 @@
 import { createAnthropic } from '@ai-sdk/anthropic';
-import { readFileSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { execFileSync } from 'child_process';
 import { homedir } from 'os';
 import type { ModelTier, ProviderName } from '@airflux/core';
@@ -8,6 +8,53 @@ import { isCodexCliAvailable } from './codex-cli-provider.js';
 import { logger } from '../lib/logger.js';
 import { getEnvironment, type CredentialStrategy } from '../runtime/environment.js';
 import { evaluateLLMHealth, type LLMHealthResult } from './health.js';
+import {
+  recordRateLimit,
+  getRateLimitState,
+  shouldPreferApiKey,
+  type RateLimitState,
+} from './rate-limit.js';
+import { getCodexAuthStatus, type CodexAuthStatus } from './codex-auth.js';
+import { makeCodexOAuthModel } from './codex-provider.js';
+import { getCodexThrottleState, type CodexThrottleState } from './codex-throttle.js';
+import {
+  markClaudeOAuthThrottled,
+  clearClaudeOAuthThrottle,
+  getClaudeOAuthThrottleState,
+  type ClaudeOAuthThrottleState,
+} from './claude-throttle.js';
+import { join } from 'path';
+
+// Per-provider utilization thresholds (0.0–1.0). OPTIONAL gate: when set,
+// the router prefers the direct-API-key path (if configured) once observed
+// utilization crosses this value and deprioritizes that provider in the
+// routing decision.
+//
+// Default: undefined — availability-first routing. The router steers away
+// from a provider only when it observes an actual throttle signal (HTTP
+// 429/402 or `anthropic-ratelimit-unified-*-status: throttled` header),
+// not because utilization reached an arbitrary percentage. This matches
+// the user's intent: "don't stop at 95%, stop when it actually stops
+// working." Set the env var below to opt back into conservative gating.
+//
+// Override (opt-in):
+//   AIRFLUX_CLAUDE_UTIL_THRESHOLD (was AIRFLUX_OAUTH_UTIL_THRESHOLD)
+//   AIRFLUX_CODEX_UTIL_THRESHOLD
+function parseOptionalThreshold(...vals: Array<string | undefined>): number | undefined {
+  for (const v of vals) {
+    if (v === undefined) continue;
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return undefined;
+}
+const CLAUDE_UTIL_THRESHOLD: number | undefined = parseOptionalThreshold(
+  process.env.AIRFLUX_CLAUDE_UTIL_THRESHOLD,
+  process.env.AIRFLUX_OAUTH_UTIL_THRESHOLD,
+);
+const CODEX_UTIL_THRESHOLD: number | undefined = parseOptionalThreshold(
+  process.env.AIRFLUX_CODEX_UTIL_THRESHOLD,
+);
 
 export function getModelCredentialSource(): CredentialStrategy {
   return getEnvironment().credentialStrategy;
@@ -19,6 +66,7 @@ const TIER_MODELS: Record<ModelTier, string> = {
   powerful: 'claude-opus-4-6',
 };
 
+
 const OPENAI_TIER_MODELS: Record<ModelTier, string> = {
   fast: 'gpt-4.1-mini',
   default: 'gpt-5.4',
@@ -27,6 +75,12 @@ const OPENAI_TIER_MODELS: Record<ModelTier, string> = {
 
 // Claude Max OAuth constants (from Claude CLI source)
 const OAUTH_BETA_HEADER = 'oauth-2025-04-20';
+const CLAUDE_CODE_BETA = 'claude-code-20250219';
+// Billing gate: this string in the first system block tells Anthropic the
+// request is on Claude Code's subscription context. Without it OAuth tokens
+// can only reach Haiku; with it, sonnet/opus are allowed.
+const CLAUDE_CODE_BILLING_HEADER =
+  'x-anthropic-billing-header: cc_version=2.1.114.ea7; cc_entrypoint=sdk-ts; cch=54600;';
 const TOKEN_REFRESH_URL = 'https://platform.claude.com/v1/oauth/token';
 const CLAUDE_CODE_CLIENT_ID = '22422756-60c9-4084-8eb7-27705f16d45e';
 const INFERENCE_SCOPE = 'user:inference';
@@ -50,7 +104,64 @@ interface OAuthCredentials {
   scopes?: string[];
 }
 
+/**
+ * Pure parser for the JSON payload `security find-generic-password -w` prints.
+ * Kept separate so it can be unit-tested without shelling out.
+ */
+export function parseKeychainPayload(
+  raw: string,
+  inferenceScope: string,
+): OAuthCredentials | null {
+  if (!raw) return null;
+  try {
+    const d = JSON.parse(raw) as { claudeAiOauth?: Record<string, unknown> };
+    const o = d.claudeAiOauth;
+    if (!o) return null;
+    const scopes = o.scopes;
+    if (!Array.isArray(scopes) || !scopes.includes(inferenceScope)) return null;
+    const accessToken = o.accessToken;
+    if (typeof accessToken !== 'string' || accessToken.length === 0) return null;
+    return {
+      accessToken,
+      refreshToken: typeof o.refreshToken === 'string' ? o.refreshToken : undefined,
+      expiresAt: typeof o.expiresAt === 'number' ? o.expiresAt : 0,
+      scopes: scopes as string[],
+    };
+  } catch {
+    return null;
+  }
+}
+
+function insideContainerHint(): boolean {
+  // /.dockerenv is the strongest signal; cgroup read is best-effort.
+  try {
+    if (existsSync('/.dockerenv')) return true;
+    const cg = readFileSync('/proc/1/cgroup', 'utf-8');
+    return /docker|kubepods|containerd/.test(cg);
+  } catch {
+    return false;
+  }
+}
+
+function readKeychainCredentials(): OAuthCredentials | null {
+  try {
+    const raw = execFileSync(
+      'security',
+      ['find-generic-password', '-s', 'Claude Code-credentials', '-w'],
+      { encoding: 'utf-8', timeout: 3000 },
+    );
+    return parseKeychainPayload(raw, INFERENCE_SCOPE);
+  } catch {
+    return null;
+  }
+}
+
 function readCredentials(): OAuthCredentials | null {
+  if (process.platform === 'darwin' && !insideContainerHint()) {
+    const k = readKeychainCredentials();
+    if (k) return k;
+    // fall through to file fallback
+  }
   for (const path of CRED_PATHS) {
     try {
       const creds = JSON.parse(readFileSync(path, 'utf-8'));
@@ -63,11 +174,56 @@ function readCredentials(): OAuthCredentials | null {
           scopes: oauth.scopes as string[],
         };
       }
-    } catch {
-      // try next
-    }
+    } catch { /* try next path */ }
   }
   return null;
+}
+
+/**
+ * Persist a refreshed OAuth token back into ~/.claude/.credentials.json.
+ *
+ * Why: the host's macOS Keychain is the source of truth for `claude login`,
+ * but the container can't read Keychain directly — `setup-docker-env.sh`
+ * snapshots Keychain → file once. Without writing refreshed tokens back to
+ * that file, every container cold path re-reads the stale snapshot and
+ * the user sees "expired" even though we just got a fresh token.
+ *
+ * Trade-off: this diverges the container's view from the host Keychain
+ * once we start refreshing on our own. If the host's Claude Code is also
+ * actively refreshing (rotating refresh_token), one of us will lose the
+ * race and the next refresh fails — at which point `setup-docker-env.sh`
+ * needs to re-sync. For interactive single-user dev that race is rare.
+ */
+function persistRefreshedCredentials(next: {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+}): void {
+  for (const path of CRED_PATHS) {
+    try {
+      let parsed: Record<string, unknown> = {};
+      try {
+        parsed = JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>;
+      } catch {
+        // File missing or unreadable — we'll create a minimal one.
+      }
+      const oauth = ((parsed.claudeAiOauth as Record<string, unknown>) ?? {});
+      oauth.accessToken = next.accessToken;
+      oauth.refreshToken = next.refreshToken;
+      oauth.expiresAt = next.expiresAt;
+      if (!Array.isArray(oauth.scopes)) oauth.scopes = [INFERENCE_SCOPE];
+      parsed.claudeAiOauth = oauth;
+      writeFileSync(path, JSON.stringify(parsed, null, 2), { mode: 0o600 });
+      logger.info('credentials.json updated with refreshed token', { path });
+      return;
+    } catch (e) {
+      logger.warn('failed to persist refreshed credentials', {
+        path,
+        error: e instanceof Error ? e.message : String(e),
+      });
+      // Try the next candidate path.
+    }
+  }
 }
 
 async function refreshOAuthToken(refreshToken: string): Promise<string | null> {
@@ -89,9 +245,19 @@ async function refreshOAuthToken(refreshToken: string): Promise<string | null> {
     if (!data.access_token) return null;
 
     oauthAccessToken = data.access_token;
+    const newRefresh = data.refresh_token ?? oauthRefreshToken ?? refreshToken;
     if (data.refresh_token) oauthRefreshToken = data.refresh_token;
     oauthExpiresAt = Date.now() + (data.expires_in ?? 3600) * 1000;
     logger.info('OAuth token refreshed successfully');
+
+    // Best-effort write-back so cold paths and container restarts pick up
+    // the fresh token instead of re-reading the old snapshot.
+    persistRefreshedCredentials({
+      accessToken: data.access_token,
+      refreshToken: newRefresh,
+      expiresAt: oauthExpiresAt,
+    });
+
     return oauthAccessToken;
   } catch (e) {
     logger.warn('OAuth token refresh error', { error: e instanceof Error ? e.message : String(e) });
@@ -113,6 +279,31 @@ function refreshViaCliSync(): void {
     oauthExpiresAt = 0;
   } catch {
     // CLI not available or refresh failed — not fatal
+  }
+}
+
+/**
+ * Called from bootstrap.ts. If the snapshot in credentials.json is
+ * already expired but a refresh_token is present, proactively hit the
+ * Anthropic refresh endpoint and write the new token back to disk.
+ *
+ * Without this, the dashboard shows "expired" on first load and every
+ * user query gets routed away from Claude until an actual Claude request
+ * triggers the refresh — which it never does, because the router avoids
+ * unhealthy providers. Breaking that circular dependency is the point.
+ */
+export async function preloadOAuthOnBoot(): Promise<void> {
+  try {
+    const token = await getFreshOAuthToken();
+    if (token) {
+      logger.info('OAuth preload: Claude token ready');
+    } else {
+      logger.info('OAuth preload: no fresh Claude token available (credentials missing or refresh failed)');
+    }
+  } catch (e) {
+    logger.warn('OAuth preload failed', {
+      error: e instanceof Error ? e.message : String(e),
+    });
   }
 }
 
@@ -182,33 +373,109 @@ function makeOAuthModel(token: string, tier: ModelTier) {
   const anthropic = createAnthropic({
     apiKey: 'placeholder',
     fetch: async (url: string | Request | URL, init?: RequestInit) => {
+      // Add ?beta=true — matches what Claude Code CLI uses for /v1/messages.
+      // Anthropic routes the subscription-context request path only when set.
+      let patchedUrl: string | Request | URL = url;
+      try {
+        const u = new URL(typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url);
+        if (u.pathname.endsWith('/v1/messages') && !u.searchParams.has('beta')) {
+          u.searchParams.set('beta', 'true');
+          patchedUrl = u.toString();
+        }
+      } catch { /* non-URL fetch target — leave as-is */ }
+
       const headers = new Headers(init?.headers);
       headers.delete('x-api-key');
       headers.set('Authorization', `Bearer ${token}`);
-      // Merge beta headers: preserve SDK-set betas (e.g. thinking) and add OAuth beta
+      // Merge beta headers: preserve SDK-set betas and add the OAuth +
+      // claude-code betas that unlock sonnet/opus under the subscription.
       const existing = headers.get('anthropic-beta');
-      const betaValues = existing
-        ? [...new Set([...existing.split(',').map(s => s.trim()), OAUTH_BETA_HEADER])]
-        : [OAUTH_BETA_HEADER];
-      headers.set('anthropic-beta', betaValues.join(','));
+      const betaSet = new Set<string>();
+      if (existing) existing.split(',').forEach((s) => betaSet.add(s.trim()));
+      betaSet.add(OAUTH_BETA_HEADER);
+      betaSet.add(CLAUDE_CODE_BETA);
+      headers.set('anthropic-beta', Array.from(betaSet).join(','));
 
-      // Patch request body: ensure every tool input_schema has type:"object"
-      // (Anthropic API requires this; older SDK versions may omit it)
+      // Patch request body:
+      //  (1) tool input_schema.type = "object" (flat + custom.* shapes)
+      //  (2) prepend billing signal to system blocks — this is the gate
+      //      that authorizes sonnet/opus on OAuth tokens.
       let body = init?.body;
       if (typeof body === 'string') {
         try {
           const parsed = JSON.parse(body) as Record<string, unknown>;
           if (Array.isArray(parsed.tools)) {
             for (const t of parsed.tools as Array<Record<string, unknown>>) {
-              const schema = t.input_schema as Record<string, unknown> | undefined;
-              if (schema && !schema.type) schema.type = 'object';
+              const flatSchema = t.input_schema as Record<string, unknown> | undefined;
+              if (flatSchema && !flatSchema.type) flatSchema.type = 'object';
+              const wrapped = t.custom as Record<string, unknown> | undefined;
+              const nestedSchema = wrapped?.input_schema as Record<string, unknown> | undefined;
+              if (nestedSchema && !nestedSchema.type) nestedSchema.type = 'object';
             }
-            body = JSON.stringify(parsed);
           }
+          const billingBlock = { type: 'text', text: CLAUDE_CODE_BILLING_HEADER };
+          const existingSystem = parsed.system;
+          if (Array.isArray(existingSystem)) {
+            parsed.system = [billingBlock, ...existingSystem];
+          } else if (typeof existingSystem === 'string' && existingSystem.length > 0) {
+            parsed.system = [billingBlock, { type: 'text', text: existingSystem }];
+          } else {
+            parsed.system = [billingBlock];
+          }
+          body = JSON.stringify(parsed);
         } catch { /* not JSON — leave as-is */ }
       }
 
-      return globalThis.fetch(url, { ...init, headers, body });
+      const response = await globalThis.fetch(patchedUrl, { ...init, headers, body });
+      // Snapshot rate-limit headers — shared with dashboard + fallback router.
+      try { recordRateLimit(response.headers); } catch { /* best-effort */ }
+
+      // Throttle policy: observe actual signals (not a utilization percent
+      // gate) and mark OAuth unavailable for the reset window. Symmetric
+      // to codex-provider.ts. Priority for retryUntil:
+      //   resetAt header > Retry-After header > default 5min.
+      try {
+        const now = Date.now();
+        if (response.status === 429 || response.status === 402) {
+          const retryAfterHdr = response.headers.get('retry-after');
+          const retryAfterSec = retryAfterHdr && /^\d+$/.test(retryAfterHdr)
+            ? parseInt(retryAfterHdr, 10)
+            : undefined;
+          const rl = getRateLimitState();
+          const resetAt = rl?.fiveHour?.resetAt ?? rl?.sevenDay?.resetAt;
+          markClaudeOAuthThrottled({
+            reason: `http_${response.status}`,
+            retryAfterSec,
+            resetAt,
+            now,
+          });
+          logger.warn('claude oauth throttled', {
+            status: response.status,
+            retryAfterSec: retryAfterSec ?? 'from-reset-or-default',
+          });
+        } else {
+          // Headers may report pre-exhaustion throttle even on a 200 —
+          // honor that too so we steer away before the next 429.
+          const rl = getRateLimitState();
+          const fh = rl?.fiveHour;
+          const sd = rl?.sevenDay;
+          if (fh?.status === 'throttled' || sd?.status === 'throttled') {
+            const window: '5h' | '7d' = fh?.status === 'throttled' ? '5h' : '7d';
+            const resetAt = window === '5h' ? fh?.resetAt : sd?.resetAt;
+            markClaudeOAuthThrottled({
+              reason: `header_throttled_${window}`,
+              resetAt,
+              window,
+              now,
+            });
+            logger.warn('claude oauth header throttled', { window, resetAt });
+          } else if (response.ok) {
+            clearClaudeOAuthThrottle();
+          }
+        }
+      } catch { /* best-effort */ }
+
+      return response;
     },
   });
   return anthropic(TIER_MODELS[tier]);
@@ -231,34 +498,37 @@ export async function createModelAsync(tier: ModelTier = 'default'): Promise<Ret
     );
   }
 
-  // 1. Try direct API key first
+  // Routing policy: prefer Claude Max OAuth (free under subscription).
+  // Fall back to ANTHROPIC_API_KEY (if set) only when Anthropic signals a
+  // real throttle — either the last response header reported
+  // `status: throttled`, or the user opted in to a numeric threshold via
+  // AIRFLUX_CLAUDE_UTIL_THRESHOLD. Without an API key, OAuth is used
+  // regardless — the alternative is failing the request.
+  const apiKeyAvailable = !!process.env.ANTHROPIC_API_KEY || !!cachedApiKey;
+  const preferApiKey = apiKeyAvailable && shouldPreferApiKey(CLAUDE_UTIL_THRESHOLD);
+  if (preferApiKey) {
+    try {
+      const apiKey = getAnthropicApiKey();
+      keySource = 'env:ANTHROPIC_API_KEY (claude-oauth-throttled)';
+      return createAnthropic({ apiKey })(TIER_MODELS[tier]);
+    } catch {
+      // Fall through to OAuth
+    }
+  }
+
+  const oauthToken = await getFreshOAuthToken();
+  if (oauthToken) {
+    keySource = 'claude-max-oauth';
+    return makeOAuthModel(oauthToken, tier);
+  }
+
+  // OAuth unavailable → try direct API key as last resort on the Claude path.
   try {
     const apiKey = getAnthropicApiKey();
     keySource = 'env:ANTHROPIC_API_KEY';
     return createAnthropic({ apiKey })(TIER_MODELS[tier]);
   } catch {
-    // no API key
-  }
-
-  // 2. Claude Max OAuth from credentials file is preferred — it's
-  //    refreshable and locally verifiable. We try this BEFORE the static
-  //    ANTHROPIC_AUTH_TOKEN env var so a long-expired env token doesn't
-  //    shadow a still-valid (or refreshable) credentials.json.
-  const oauthToken = await getFreshOAuthToken();
-  if (oauthToken) {
-    keySource = 'claude-max-oauth';
-    const token = oauthToken;
-    const anthropic = createAnthropic({
-      apiKey: 'placeholder',
-      fetch: async (url: string | Request | URL, init?: RequestInit) => {
-        const headers = new Headers(init?.headers);
-        headers.delete('x-api-key');
-        headers.set('Authorization', `Bearer ${token}`);
-        headers.set('anthropic-beta', OAUTH_BETA_HEADER);
-        return globalThis.fetch(url, { ...init, headers });
-      },
-    });
-    return anthropic(TIER_MODELS[tier]);
+    // no API key either
   }
 
   // 3. Last resort: ANTHROPIC_AUTH_TOKEN env var. Used only if the
@@ -319,16 +589,52 @@ export interface LLMStatus {
   hoursExpired?: number;
   verified: boolean;
   hint?: string;
+  /** Latest observed Claude Max OAuth subscription quota usage. */
+  rateLimit?: RateLimitState | null;
+  /** @deprecated use claudeUtilizationThreshold; kept for older dashboard builds. */
+  oauthUtilizationThreshold?: number;
+  /** OPTIONAL threshold (0-1). When set via AIRFLUX_CLAUDE_UTIL_THRESHOLD,
+   *  the router also defers to ANTHROPIC_API_KEY once observed utilization
+   *  crosses it. Default undefined — rely on actual throttle signals
+   *  (HTTP 429/402 or `status: throttled` header) instead of a percentage. */
+  claudeUtilizationThreshold?: number;
+  /** OPTIONAL threshold (0-1) for Codex, opt-in via AIRFLUX_CODEX_UTIL_THRESHOLD.
+   *  Default undefined — availability-first (isCodexThrottled). */
+  codexUtilizationThreshold?: number;
+  /** True if an ANTHROPIC_API_KEY is available to fall back to. */
+  apiKeyFallbackAvailable?: boolean;
+  /** Codex / OpenAI auth state so the dashboard renders both providers. */
+  codex?: CodexAuthStatus;
+  /** Current Codex throttle state — set when a 429 was observed recently. */
+  codexThrottle?: CodexThrottleState | null;
+  /** Current Claude OAuth throttle state — set when Anthropic reported
+   *  HTTP 429/402 or `status: throttled` headers. Dashboard surfaces this
+   *  as a warn banner so users see "why did my Claude request get steered
+   *  away." Null when OAuth is freely usable. */
+  claudeThrottle?: ClaudeOAuthThrottleState | null;
 }
 
 export function getLLMStatus(): LLMStatus {
   const providers: string[] = [];
   const health = getLLMHealth();
+  const rateLimit = getRateLimitState();
+  const apiKeyFallbackAvailable = !!process.env.ANTHROPIC_API_KEY || !!cachedApiKey;
+  const common = {
+    rateLimit,
+    oauthUtilizationThreshold: CLAUDE_UTIL_THRESHOLD,
+    claudeUtilizationThreshold: CLAUDE_UTIL_THRESHOLD,
+    codexUtilizationThreshold: CODEX_UTIL_THRESHOLD,
+    apiKeyFallbackAvailable,
+    codex: getCodexAuthStatus(),
+    codexThrottle: getCodexThrottleState(),
+    claudeThrottle: getClaudeOAuthThrottleState(),
+  };
 
   try {
     getAnthropicApiKey();
     providers.push('anthropic');
     return {
+      ...common,
       available: true,
       source: keySource,
       providers,
@@ -343,6 +649,7 @@ export function getLLMStatus(): LLMStatus {
   if (creds) {
     providers.push('claude-max-oauth');
     return {
+      ...common,
       available: !health.expired, // expired creds → available=false (actionable)
       source: health.expired
         ? 'claude-max-oauth (expired)'
@@ -360,6 +667,7 @@ export function getLLMStatus(): LLMStatus {
   if (process.env.ANTHROPIC_AUTH_TOKEN) {
     providers.push('claude-max-oauth');
     return {
+      ...common,
       available: true,
       source: 'env:ANTHROPIC_AUTH_TOKEN',
       providers,
@@ -373,6 +681,7 @@ export function getLLMStatus(): LLMStatus {
   if (isClaudeCliAvailable()) {
     providers.push('claude-cli');
     return {
+      ...common,
       available: true,
       source: 'claude-cli',
       providers,
@@ -385,6 +694,7 @@ export function getLLMStatus(): LLMStatus {
   if (process.env.OPENAI_API_KEY) {
     providers.push('openai');
     return {
+      ...common,
       available: true,
       source: 'env:OPENAI_API_KEY',
       providers,
@@ -397,6 +707,7 @@ export function getLLMStatus(): LLMStatus {
   if (isCodexCliAvailable()) {
     providers.push('codex-cli');
     return {
+      ...common,
       available: true,
       source: 'codex-cli',
       providers,
@@ -407,6 +718,7 @@ export function getLLMStatus(): LLMStatus {
   }
 
   return {
+    ...common,
     available: false,
     source: 'none',
     providers,
@@ -433,13 +745,16 @@ export async function createModelForProvider(
 }
 
 /**
- * Create an OpenAI model via AI SDK.
- * Falls back to Codex CLI if no API key is available.
+ * Create an OpenAI / Codex model.
+ * Preference:
+ *   1. OPENAI_API_KEY (standard API path → chat.completions model)
+ *   2. Codex ChatGPT OAuth (~/.codex/auth.json) — subscription path
+ *      via POST https://chatgpt.com/backend-api/codex/responses.
+ * Throws when neither is configured.
  */
 async function createOpenAIModel(tier: ModelTier): Promise<any> {
   const modelId = OPENAI_TIER_MODELS[tier];
 
-  // Try OPENAI_API_KEY first
   if (process.env.OPENAI_API_KEY) {
     try {
       const { createOpenAI } = await import('@ai-sdk/openai');
@@ -451,8 +766,27 @@ async function createOpenAIModel(tier: ModelTier): Promise<any> {
     }
   }
 
-  // No API key — throw so caller can fall back to Codex CLI
-  throw new Error(`No OpenAI API key. Use Codex CLI fallback for model ${modelId}.`);
+  // Codex ChatGPT OAuth subscription fallback.
+  try {
+    const raw = readFileSync(join(process.env.HOME || '/root', '.codex/auth.json'), 'utf-8');
+    const auth = JSON.parse(raw) as {
+      tokens?: { access_token?: string; account_id?: string };
+    };
+    const token = auth.tokens?.access_token;
+    const accountId = auth.tokens?.account_id;
+    if (token && accountId) {
+      return makeCodexOAuthModel(token, accountId, tier);
+    }
+  } catch {
+    // No codex auth file — fall through.
+  }
+
+  throw new Error(`No OpenAI API key or Codex OAuth. Set OPENAI_API_KEY or run \`codex login\`.`);
+}
+
+/** Direct entry for the routing layer — tries Codex OAuth first. */
+export async function createCodexModelAsync(tier: ModelTier = 'default'): Promise<any> {
+  return createOpenAIModel(tier);
 }
 
 /** Set API key at runtime (from dashboard UI). */

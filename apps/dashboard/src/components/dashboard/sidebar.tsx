@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { ThemeToggle } from "@/components/dashboard/theme-toggle";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "현황", icon: GridIcon },
@@ -81,9 +82,12 @@ export function Sidebar() {
         </Link>
       </div>
       <div className="border-t border-border/50 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" role="status" aria-label="시스템 정상" />
-          <span className="text-[11px] text-muted-foreground">관리자 모드</span>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" role="status" aria-label="시스템 정상" />
+            <span className="text-[11px] text-muted-foreground">관리자 모드</span>
+          </div>
+          <ThemeToggle />
         </div>
         <UserInfo />
       </div>

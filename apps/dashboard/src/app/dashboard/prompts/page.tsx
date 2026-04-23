@@ -36,9 +36,9 @@ function PromptDiff({ base, next }: DiffLineProps) {
       <pre className="m-0 whitespace-pre-wrap font-mono text-[11px] leading-relaxed">
         {parts.map((p, i) => {
           const bg = p.added
-            ? "bg-emerald-500/10 text-emerald-200"
+            ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-200"
             : p.removed
-              ? "bg-red-500/10 text-red-200"
+              ? "bg-red-500/10 text-red-700 dark:text-red-200"
               : "text-muted-foreground/70";
           const prefix = p.added ? "+ " : p.removed ? "- " : "  ";
           return (

@@ -8,6 +8,14 @@ import { fetchClient } from "@/lib/client-api";
 
 const SESSION_STORAGE_KEY = "airflux-playground-session-id";
 
+interface RoutingInfo {
+  provider: "claude" | "codex" | "none";
+  tier: "fast" | "default" | "powerful";
+  effort: "low" | "medium" | "high";
+  reason?: string;
+  signals?: string[];
+}
+
 interface Message {
   id: string;
   role: "user" | "agent";
@@ -23,6 +31,7 @@ interface Message {
   thinking?: string;
   timestamp: string;
   feedbackSent?: "positive" | "negative";
+  routing?: RoutingInfo;
 }
 
 interface StoredMessage {
@@ -242,6 +251,22 @@ export default function PlaygroundPage() {
         }
 
         switch (event.type) {
+          case "routing": {
+            // Stamp the agent message with routing info before tokens arrive.
+            const routing: RoutingInfo = {
+              provider: (event.provider as RoutingInfo["provider"]) ?? "claude",
+              tier: (event.tier as RoutingInfo["tier"]) ?? "default",
+              effort: (event.effort as RoutingInfo["effort"]) ?? "medium",
+              reason: typeof event.reason === "string" ? event.reason : undefined,
+              signals: Array.isArray(event.signals)
+                ? (event.signals as string[])
+                : undefined,
+            };
+            setMessages((prev) =>
+              prev.map((m) => (m.id === agentMsgId ? { ...m, routing } : m)),
+            );
+            break;
+          }
           case "text":
             textAccum += String(event.delta || "");
             flushToMessage();
@@ -483,6 +508,24 @@ export default function PlaygroundPage() {
                       <span className="font-mono text-[10px] text-primary">
                         {msg.agent}
                       </span>
+                      {msg.routing && (
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-[10px] ${
+                            msg.routing.provider === "codex"
+                              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                              : "border-violet-500/30 bg-violet-500/10 text-violet-300"
+                          }`}
+                          title={
+                            msg.routing.reason +
+                            (msg.routing.signals && msg.routing.signals.length > 0
+                              ? ` · signals: ${msg.routing.signals.join(", ")}`
+                              : "")
+                          }
+                        >
+                          🧠 {msg.routing.provider} · {msg.routing.tier}
+                          {msg.routing.effort ? ` · ${msg.routing.effort}` : ""}
+                        </span>
+                      )}
                       {msg.model && (
                         <span className="font-mono text-[10px] text-violet-400">
                           {msg.model}

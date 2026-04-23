@@ -29,7 +29,7 @@ import type {
   LLMRouteDecision,
 } from '@airflux/core';
 import { z } from 'zod';
-import { createModelAsync } from './llm/model-factory.js';
+import { createModelAsync, preloadOAuthOnBoot } from './llm/model-factory.js';
 import { attachMCPToolsToAgents, registerMCPToolsToRegistry } from './mcp/client.js';
 
 export async function bootstrap(settingsPath?: string): Promise<void> {
@@ -1001,4 +1001,9 @@ function registerBuiltInTools(): void {
   logger.info("Tools registered", { count: ToolRegistry.list().length });
   logger.info("Domain glossary loaded", { terms: glossary.listTerms().length });
   logger.info("Semantic layer loaded", { tables: semanticLayer.listTables().length, metrics: semanticLayer.listMetrics().length });
+
+  // Proactively refresh Claude OAuth on startup so the dashboard doesn't
+  // report "expired" when the on-disk snapshot is stale but a valid
+  // refresh_token is available. Non-blocking — best-effort.
+  preloadOAuthOnBoot().catch(() => { /* already logged */ });
 }
