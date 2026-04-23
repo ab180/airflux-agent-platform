@@ -25,3 +25,12 @@ export type {
   ExecutionState,
   ExecutionStateStore,
 } from './execution-state.js';
+export type {
+  EvalDifficulty,
+  GoldenTestCase,
+  EvalResult,
+  EvalRun,
+  EvalStore,
+} from './eval.js';
+export type { RequestLog, LogQuery, LogStore } from './log.js';
+export type { TableInfo, DbHealth, CleanupResult } from './db-health.js';
