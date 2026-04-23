@@ -161,3 +161,12 @@ export interface PublishedAsset {
   promotionId: string;
   publishedAt: string;
 }
+
+export interface DrawerAsset {
+  userId: string;
+  assetKind: "agent" | "skill" | "tool" | "prompt";
+  assetId: string;
+  displayName: string;
+  notes?: string;
+  createdAt: string;
+}

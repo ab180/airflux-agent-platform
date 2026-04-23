@@ -2,10 +2,12 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { OrgCreateForm } from "@/components/dashboard/org-create-form";
 import { ProjectCreateForm } from "@/components/dashboard/project-create-form";
+import { DrawerAssetManager } from "@/components/dashboard/drawer-asset-manager";
 import {
   fetchAPISafe,
   type WorkspaceResponse,
   type ProjectType,
+  type DrawerAsset,
 } from "@/lib/api";
 
 const TYPE_LABEL: Record<ProjectType, string> = {
@@ -27,6 +29,10 @@ export default async function WorkspacesPage() {
     drawer: { userId: "local", createdAt: "" },
     orgs: [],
   });
+  const { assets: drawerAssets } = await fetchAPISafe<{ assets: DrawerAsset[] }>(
+    "/api/drawer/assets",
+    { assets: [] },
+  );
 
   const totalProjects = workspace.orgs.reduce(
     (sum, org) => sum + org.projects.length,
@@ -49,9 +55,9 @@ export default async function WorkspacesPage() {
       </header>
 
       {/* Personal drawer */}
-      <section>
-        <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-          개인 Drawer
+      <section className="space-y-2">
+        <h2 className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+          개인 Drawer ({drawerAssets.length}개 자산)
         </h2>
         <div className="rounded-lg border border-border/50 px-4 py-3">
           <div className="flex items-center justify-between">
@@ -69,6 +75,7 @@ export default async function WorkspacesPage() {
             ) : null}
           </div>
         </div>
+        <DrawerAssetManager assets={drawerAssets} />
       </section>
 
       {/* Orgs + Projects */}

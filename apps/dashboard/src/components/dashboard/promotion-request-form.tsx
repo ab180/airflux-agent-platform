@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { API_BASE } from "@/lib/config";
-import type { WorkspaceProject } from "@/lib/api";
+import type { DrawerAsset, WorkspaceProject } from "@/lib/api";
 
 const KIND_OPTIONS = [
   { value: "agent", label: "에이전트" },
@@ -15,8 +15,10 @@ const KIND_OPTIONS = [
 
 export function PromotionRequestForm({
   projects,
+  drawerAssets,
 }: {
   projects: WorkspaceProject[];
+  drawerAssets: DrawerAsset[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -26,6 +28,13 @@ export function PromotionRequestForm({
   const [assetId, setAssetId] = useState("");
   const [toProjectId, setToProjectId] = useState(projects[0]?.id ?? "");
   const [notes, setNotes] = useState("");
+
+  // Narrow drawer assets to the currently-selected kind so the picker
+  // shows only valid options. If the user has no matching drawer asset,
+  // the free-text field stays as a fallback.
+  const matchingDrawerAssets = drawerAssets.filter(
+    (a) => a.assetKind === assetKind,
+  );
 
   function reset() {
     setAssetKind("agent");
@@ -124,8 +133,22 @@ export function PromotionRequestForm({
 
       <label className="flex flex-col gap-1">
         <span className="text-[11px] font-medium text-muted-foreground">
-          자산 ID
+          자산 {matchingDrawerAssets.length > 0 ? "(drawer에서 선택 or 직접 입력)" : "ID"}
         </span>
+        {matchingDrawerAssets.length > 0 ? (
+          <select
+            value={assetId}
+            onChange={(e) => setAssetId(e.target.value)}
+            className="rounded-md border border-border/50 bg-background px-2 py-1.5 text-[12px] font-mono"
+          >
+            <option value="">— 선택 또는 아래에서 직접 입력 —</option>
+            {matchingDrawerAssets.map((a) => (
+              <option key={a.assetId} value={a.assetId}>
+                {a.displayName} ({a.assetId})
+              </option>
+            ))}
+          </select>
+        ) : null}
         <input
           type="text"
           value={assetId}
