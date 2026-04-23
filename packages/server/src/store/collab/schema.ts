@@ -29,6 +29,36 @@ export function ensureCollabTables(): void {
 
     CREATE INDEX IF NOT EXISTS idx_org_memberships_user
       ON org_memberships(user_id);
+
+    CREATE TABLE IF NOT EXISTS projects (
+      id TEXT PRIMARY KEY,
+      org_id TEXT NOT NULL,
+      slug TEXT NOT NULL,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL CHECK (type IN ('code-repo','docs','objective')),
+      visibility TEXT NOT NULL CHECK (visibility IN ('private','internal','public')),
+      external_ref TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (org_id, slug),
+      FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS project_memberships (
+      project_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('maintainer','contributor','runner','viewer')),
+      joined_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (project_id, user_id),
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_project_memberships_user
+      ON project_memberships(user_id);
+
+    CREATE TABLE IF NOT EXISTS personal_drawers (
+      user_id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
   initialized = true;
 }

@@ -1,20 +1,37 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { SqliteOrgStore, SqliteMembershipStore } from '../store/collab/index.js';
+import {
+  SqliteOrgStore,
+  SqliteMembershipStore,
+  SqliteProjectStore,
+  SqliteDrawerStore,
+} from '../store/collab/index.js';
 import { getDb } from '../store/db.js';
 
 const orgStore = new SqliteOrgStore();
 const membershipStore = new SqliteMembershipStore();
+const projectStore = new SqliteProjectStore();
+const drawerStore = new SqliteDrawerStore();
+
+function cleanAll(): void {
+  try {
+    const db = getDb();
+    db.exec('DELETE FROM project_memberships');
+    db.exec('DELETE FROM personal_drawers');
+    db.exec('DELETE FROM projects');
+    db.exec('DELETE FROM org_memberships');
+    db.exec('DELETE FROM orgs');
+  } catch {
+    // tables will be created lazily by adapters on first use
+  }
+}
+
+async function freshOrg() {
+  const slug = `org-${Math.random().toString(36).slice(2, 8)}`;
+  return orgStore.createOrg({ slug, name: slug });
+}
 
 describe('SqliteOrgStore', () => {
-  beforeEach(() => {
-    try {
-      const db = getDb();
-      db.exec('DELETE FROM org_memberships');
-      db.exec('DELETE FROM orgs');
-    } catch {
-      // tables will be created lazily
-    }
-  });
+  beforeEach(cleanAll);
 
   it('creates and retrieves an org by id', async () => {
     const org = await orgStore.createOrg({
@@ -37,22 +54,14 @@ describe('SqliteOrgStore', () => {
 
   it('rejects duplicate slugs', async () => {
     await orgStore.createOrg({ slug: 'same', name: 'First' });
-    await expect(orgStore.createOrg({ slug: 'same', name: 'Second' })).rejects.toThrow(
-      /slug|already|unique/i,
-    );
+    await expect(
+      orgStore.createOrg({ slug: 'same', name: 'Second' }),
+    ).rejects.toThrow(/slug|already|unique/i);
   });
 });
 
-describe('SqliteMembershipStore + listOrgsForUser', () => {
-  beforeEach(() => {
-    try {
-      const db = getDb();
-      db.exec('DELETE FROM org_memberships');
-      db.exec('DELETE FROM orgs');
-    } catch {
-      // tables will be created lazily
-    }
-  });
+describe('SqliteMembershipStore — org membership', () => {
+  beforeEach(cleanAll);
 
   it('adds a member and lists that org for the user', async () => {
     const org = await orgStore.createOrg({ slug: 'co', name: 'Co' });
@@ -79,5 +88,111 @@ describe('SqliteMembershipStore + listOrgsForUser', () => {
 
     const orgs = await orgStore.listOrgsForUser('bob');
     expect(orgs).toHaveLength(1);
+  });
+});
+
+describe('SqliteProjectStore', () => {
+  beforeEach(cleanAll);
+
+  it('creates and retrieves a project', async () => {
+    const org = await freshOrg();
+    const p = await projectStore.createProject({
+      orgId: org.id,
+      slug: 'data',
+      name: 'Data Project',
+      type: 'code-repo',
+      visibility: 'internal',
+    });
+    expect(p.id).toMatch(/.+/);
+    expect(p.type).toBe('code-repo');
+    expect(p.visibility).toBe('internal');
+
+    const fetched = await projectStore.getProject(p.id);
+    expect(fetched).toEqual(p);
+  });
+
+  it('lists projects by org', async () => {
+    const org = await freshOrg();
+    await projectStore.createProject({
+      orgId: org.id, slug: 'a', name: 'A', type: 'code-repo', visibility: 'private',
+    });
+    await projectStore.createProject({
+      orgId: org.id, slug: 'b', name: 'B', type: 'docs', visibility: 'internal',
+    });
+    const list = await projectStore.listProjects(org.id);
+    expect(list).toHaveLength(2);
+    expect(list.map(p => p.slug).sort()).toEqual(['a', 'b']);
+  });
+
+  it('rejects duplicate slug within the same org', async () => {
+    const org = await freshOrg();
+    await projectStore.createProject({
+      orgId: org.id, slug: 'dup', name: 'x', type: 'docs', visibility: 'private',
+    });
+    await expect(
+      projectStore.createProject({
+        orgId: org.id, slug: 'dup', name: 'y', type: 'docs', visibility: 'private',
+      }),
+    ).rejects.toThrow(/slug|unique|already/i);
+  });
+
+  it('allows same slug across different orgs', async () => {
+    const o1 = await freshOrg();
+    const o2 = await freshOrg();
+    await projectStore.createProject({
+      orgId: o1.id, slug: 'same', name: 'in org 1', type: 'docs', visibility: 'private',
+    });
+    const p2 = await projectStore.createProject({
+      orgId: o2.id, slug: 'same', name: 'in org 2', type: 'docs', visibility: 'private',
+    });
+    expect(p2.orgId).toBe(o2.id);
+  });
+});
+
+describe('SqliteMembershipStore — project membership', () => {
+  beforeEach(cleanAll);
+
+  it('adds + lists project members', async () => {
+    const org = await freshOrg();
+    const p = await projectStore.createProject({
+      orgId: org.id, slug: 'x', name: 'X', type: 'code-repo', visibility: 'private',
+    });
+    await membershipStore.addProjectMember({
+      projectId: p.id, userId: 'alice', role: 'maintainer',
+    });
+    await membershipStore.addProjectMember({
+      projectId: p.id, userId: 'bob', role: 'viewer',
+    });
+
+    const members = await membershipStore.listProjectMembers(p.id);
+    expect(members).toHaveLength(2);
+
+    expect(await membershipStore.userRoleInProject('alice', p.id)).toBe('maintainer');
+    expect(await membershipStore.userRoleInProject('bob', p.id)).toBe('viewer');
+    expect(await membershipStore.userRoleInProject('carol', p.id)).toBeNull();
+  });
+
+  it('dedupes duplicate addProjectMember', async () => {
+    const org = await freshOrg();
+    const p = await projectStore.createProject({
+      orgId: org.id, slug: 'd', name: 'D', type: 'docs', visibility: 'private',
+    });
+    await membershipStore.addProjectMember({ projectId: p.id, userId: 'u', role: 'runner' });
+    await membershipStore.addProjectMember({ projectId: p.id, userId: 'u', role: 'runner' });
+    const members = await membershipStore.listProjectMembers(p.id);
+    expect(members).toHaveLength(1);
+  });
+});
+
+describe('SqliteDrawerStore', () => {
+  beforeEach(cleanAll);
+
+  it('creates a drawer on first ensure + returns existing on second', async () => {
+    const d1 = await drawerStore.ensureDrawer('alice');
+    expect(d1.userId).toBe('alice');
+    expect(d1.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}/);
+
+    const d2 = await drawerStore.ensureDrawer('alice');
+    expect(d2.createdAt).toBe(d1.createdAt);
   });
 });
