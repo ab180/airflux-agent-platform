@@ -123,6 +123,56 @@ describe('POST /api/promotions/request', () => {
   });
 });
 
+describe('GET /api/promotions/mine', () => {
+  beforeEach(() => {
+    cleanAll();
+    vi.unstubAllEnvs();
+    resetEnvironmentCache();
+    vi.stubEnv('AIROPS_MODE', 'local');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    resetEnvironmentCache();
+  });
+
+  it('lists every state the caller requested, newest first', async () => {
+    const { project } = await seed();
+
+    const first = await promotionStore.request({
+      assetKind: 'agent', assetId: 'a',
+      fromScope: { kind: 'drawer', userId: 'local' },
+      toScope: { kind: 'project', projectId: project.id },
+      requestedBy: 'local',
+    });
+    const second = await promotionStore.request({
+      assetKind: 'skill', assetId: 's',
+      fromScope: { kind: 'drawer', userId: 'local' },
+      toScope: { kind: 'project', projectId: project.id },
+      requestedBy: 'local',
+    });
+    // Approve the first — still in mine list but state changed.
+    await promotionStore.approve(first.id, 'reviewer');
+
+    const res = await makeApp().request('/api/promotions/mine');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      promotions: Array<{ id: string; state: string }>;
+    };
+    expect(body.promotions).toHaveLength(2);
+    // Newest first — second (still under-review) comes before first (published)
+    expect(body.promotions[0].id).toBe(second.id);
+    expect(body.promotions[0].state).toBe('under-review');
+    expect(body.promotions[1].id).toBe(first.id);
+    expect(body.promotions[1].state).toBe('published');
+  });
+
+  it('returns empty list when caller has requested nothing', async () => {
+    const res = await makeApp().request('/api/promotions/mine');
+    const body = (await res.json()) as { promotions: unknown[] };
+    expect(body.promotions).toEqual([]);
+  });
+});
+
 describe('GET /api/promotions?projectId=', () => {
   beforeEach(() => {
     cleanAll();

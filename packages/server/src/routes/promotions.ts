@@ -101,6 +101,51 @@ promotionsRoute.post('/promotions/request', async (c) => {
 });
 
 /**
+ * GET /api/promotions/mine — caller's own requests (every state).
+ * Gives the requester a timeline of "what did I ask to promote, and
+ * where is each one in the review cycle?" — drawer-owner visibility
+ * orthogonal to the project-maintainer queue below.
+ */
+promotionsRoute.get('/promotions/mine', async (c) => {
+  const userId = currentUser(new Headers(c.req.raw.headers));
+  const rows = getDb()
+    .prepare(
+      `SELECT id, asset_kind, asset_id, from_scope_kind, from_scope_ref,
+              to_scope_kind, to_scope_ref, state, requested_by,
+              reviewed_by, decided_at, notes
+       FROM asset_promotions
+       WHERE requested_by = ?
+       ORDER BY created_at DESC, rowid DESC`,
+    )
+    .all(userId) as Array<{
+      id: string; asset_kind: AssetPromotionRecord['assetKind']; asset_id: string;
+      from_scope_kind: 'drawer' | 'project'; from_scope_ref: string;
+      to_scope_kind: 'drawer' | 'project'; to_scope_ref: string;
+      state: AssetPromotionRecord['state']; requested_by: string;
+      reviewed_by: string | null; decided_at: string | null; notes: string | null;
+    }>;
+  const promotions: AssetPromotionRecord[] = rows.map((r) => {
+    const from: AssetPromotionRecord['fromScope'] =
+      r.from_scope_kind === 'drawer'
+        ? { kind: 'drawer', userId: r.from_scope_ref }
+        : { kind: 'project', projectId: r.from_scope_ref };
+    const to: AssetPromotionRecord['toScope'] =
+      r.to_scope_kind === 'drawer'
+        ? { kind: 'drawer', userId: r.to_scope_ref }
+        : { kind: 'project', projectId: r.to_scope_ref };
+    const rec: AssetPromotionRecord = {
+      id: r.id, assetKind: r.asset_kind, assetId: r.asset_id,
+      fromScope: from, toScope: to, state: r.state, requestedBy: r.requested_by,
+    };
+    if (r.reviewed_by) rec.reviewedBy = r.reviewed_by;
+    if (r.decided_at) rec.decidedAt = r.decided_at;
+    if (r.notes) rec.notes = r.notes;
+    return rec;
+  });
+  return c.json({ promotions });
+});
+
+/**
  * GET /api/promotions?projectId=... — pending promotions for a project.
  * Caller must be a project member of any role.
  */
