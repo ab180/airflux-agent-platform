@@ -61,6 +61,27 @@ export async function bootstrap(settingsPath?: string): Promise<void> {
     logger.warn('No skills config found, continuing with defaults');
   }
 
+  // 2b. Load markdown-format skills from settings/skills/*.md (additive).
+  // These extend or override YAML-loaded skills by name. Missing directory
+  // is fine — markdown format is optional for now.
+  try {
+    const { loadSkillsFromMarkdownDir, getSettingsDir } = await import('@airflux/core');
+    const { existsSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const mdDir = join(getSettingsDir(), 'skills');
+    if (existsSync(mdDir)) {
+      const mdSkills = loadSkillsFromMarkdownDir(mdDir);
+      for (const skill of mdSkills) {
+        SkillRegistry.register(skill);
+      }
+      if (mdSkills.length > 0) {
+        logger.info('Markdown skills loaded', { count: mdSkills.length });
+      }
+    }
+  } catch (e) {
+    logger.warn('Markdown skill loader failed', { error: (e as Error).message });
+  }
+
   // 3. Register agent factories
   AgentRegistry.registerFactory('echo-agent', (config, tools) => new EchoAgent(config, tools as Record<string, AgentTool>));
 

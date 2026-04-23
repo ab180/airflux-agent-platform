@@ -1,7 +1,7 @@
 import { logger } from '../lib/logger.js';
 import { Hono } from 'hono';
-import { AgentRegistry, HttpResponseChannel, AirfluxError, runGuardrails, maskPii } from '@airflux/core';
-import type { AgentContext } from '@airflux/core';
+import { AgentRegistry, HttpResponseChannel, AirfluxError, runGuardrails, maskPii, createNetworkState } from '@airflux/core';
+import type { AgentContext, NetworkState } from '@airflux/core';
 import { randomUUID } from 'crypto';
 import { validateQueryBody } from '../middleware/validation.js';
 import { insertLog } from '../store/log-store.js';
@@ -105,14 +105,22 @@ queryRoute.post('/query', async (c) => {
 
     // Routing
     const routingStartTime = performance.now();
+    const networkState: NetworkState<{
+      sessionId: string;
+      userId: string;
+      traceId: string;
+    }> = createNetworkState({
+      data: { sessionId, userId: data.userId, traceId },
+    });
     let agentName: string;
     let matchedRule: string | null = null;
     let llmRouted = false;
     let llmReason: string | null = null;
     if (data.agent) {
       agentName = data.agent;
+      networkState.pushAgent(agentName, 'explicit');
     } else {
-      const routed = await getRouter().route(data.query);
+      const routed = await getRouter().route(data.query, networkState);
       agentName = routed.agent;
       matchedRule = routed.matchedRule;
       llmRouted = routed.llmRouted === true;
@@ -128,6 +136,7 @@ queryRoute.post('/query', async (c) => {
         llmRouted,
         llmReason,
         explicitAgent: !!data.agent,
+        history: networkState.history,
       };
     }
 

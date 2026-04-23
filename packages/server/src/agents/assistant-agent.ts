@@ -1,5 +1,5 @@
 import { generateText, streamText, stepCountIs } from 'ai';
-import { BaseAgent } from '@airflux/core';
+import { BaseAgent, SkillRegistry } from '@airflux/core';
 import type { AgentContext, AgentResult, AgentConfig, AgentTool } from '@airflux/core';
 import { getAgentInstructions } from './instructions.js';
 import { createModelAsync, createModelForProvider } from '../llm/model-factory.js';
@@ -217,6 +217,22 @@ export class AssistantAgent extends BaseAgent {
 
     let prompt = basePrompt;
     prompt += `\n\n## 사용 가능한 도구\n${toolDescriptions}`;
+
+    // Skills — if any configured skill carries markdown `instructions`,
+    // inject them as individual sections. Skills without instructions
+    // (YAML-only) are silently skipped.
+    if (Array.isArray(this.config.skills) && this.config.skills.length > 0) {
+      const skillBlocks: string[] = [];
+      for (const skillName of this.config.skills) {
+        const skill = SkillRegistry.get(skillName);
+        if (skill?.instructions && skill.instructions.trim() !== '') {
+          skillBlocks.push(`### ${skill.name}\n${skill.instructions.trim()}`);
+        }
+      }
+      if (skillBlocks.length > 0) {
+        prompt += `\n\n## 활성 스킬\n${skillBlocks.join('\n\n')}`;
+      }
+    }
 
     // Inject advisor guidance when advisor is configured
     if (this.config.advisor) {
