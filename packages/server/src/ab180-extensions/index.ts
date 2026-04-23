@@ -179,10 +179,16 @@ export function registerAb180Tools(): void {
     },
   });
 
-  logger.info('AB180 tools registered', {
-    count: 6,
-    tools: ['queryData', 'searchDocs', 'lookupTerm', 'findTermsInQuery', 'getSemanticLayer', 'getTableSchema', 'getMetricSQL'],
-  });
+  const tools = [
+    'queryData',
+    'searchDocs',
+    'lookupTerm',
+    'findTermsInQuery',
+    'getSemanticLayer',
+    'getTableSchema',
+    'getMetricSQL',
+  ];
+  logger.info('AB180 tools registered', { count: tools.length, tools });
 }
 
 /**
