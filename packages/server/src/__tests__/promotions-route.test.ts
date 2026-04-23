@@ -7,6 +7,7 @@ import {
   SqliteProjectStore,
   SqlitePromotionStore,
   SqliteProjectAssetStore,
+  SqliteDrawerAssetStore,
 } from '../store/collab/index.js';
 import { getDb } from '../store/db.js';
 import { queryAudit } from '../store/audit-log.js';
@@ -17,11 +18,13 @@ const membershipStore = new SqliteMembershipStore();
 const projectStore = new SqliteProjectStore();
 const promotionStore = new SqlitePromotionStore();
 const projectAssetStore = new SqliteProjectAssetStore();
+const drawerAssetStore = new SqliteDrawerAssetStore();
 
 function cleanAll(): void {
   try {
     const db = getDb();
     db.exec('DELETE FROM audit_log');
+    db.exec('DELETE FROM drawer_assets');
     db.exec('DELETE FROM project_assets');
     db.exec('DELETE FROM asset_promotions');
     db.exec('DELETE FROM project_memberships');
@@ -111,6 +114,60 @@ describe('POST /api/promotions/request', () => {
       }),
     });
     expect(res.status).toBe(404);
+  });
+
+  it('400 when drawer has assets of the same kind but assetId does not match', async () => {
+    const { project } = await seed();
+    const { SqliteDrawerStore } = await import('../store/collab/index.js');
+    await new SqliteDrawerStore().ensureDrawer('local');
+    await drawerAssetStore.register({
+      userId: 'local', assetKind: 'agent', assetId: 'existing', displayName: 'Existing',
+    });
+    const res = await makeApp().request('/api/promotions/request', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        assetKind: 'agent',
+        assetId: 'not-in-drawer',
+        toProjectId: project.id,
+      }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/not registered/i);
+  });
+
+  it('accepts promotion when assetId matches a drawer asset', async () => {
+    const { project } = await seed();
+    const { SqliteDrawerStore } = await import('../store/collab/index.js');
+    await new SqliteDrawerStore().ensureDrawer('local');
+    await drawerAssetStore.register({
+      userId: 'local', assetKind: 'agent', assetId: 'my-agent', displayName: 'Mine',
+    });
+    const res = await makeApp().request('/api/promotions/request', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        assetKind: 'agent',
+        assetId: 'my-agent',
+        toProjectId: project.id,
+      }),
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it('free-form promotion still allowed when drawer is empty', async () => {
+    const { project } = await seed();
+    const res = await makeApp().request('/api/promotions/request', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        assetKind: 'agent',
+        assetId: 'anything',
+        toProjectId: project.id,
+      }),
+    });
+    expect(res.status).toBe(201);
   });
 
   it('403 when caller not in the target project org', async () => {

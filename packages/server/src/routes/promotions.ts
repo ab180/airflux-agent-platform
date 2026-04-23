@@ -7,6 +7,7 @@ import {
   SqlitePromotionStore,
   SqliteProjectStore,
   SqliteProjectAssetStore,
+  SqliteDrawerAssetStore,
 } from '../store/collab/index.js';
 import { resolveTrustedUserId } from '../security/trusted-user.js';
 import { getEnvironment } from '../runtime/environment.js';
@@ -20,6 +21,7 @@ const projectStore = new SqliteProjectStore();
 const orgStore = new SqliteOrgStore();
 const membershipStore = new SqliteMembershipStore();
 const projectAssetStore = new SqliteProjectAssetStore();
+const drawerAssetStore = new SqliteDrawerAssetStore();
 
 function currentUser(headers: Headers): string {
   const env = getEnvironment();
@@ -90,6 +92,24 @@ promotionsRoute.post('/promotions/request', async (c) => {
   const userOrgs = await orgStore.listOrgsForUser(userId);
   if (!userOrgs.some(o => o.id === project.orgId)) {
     return c.json({ error: 'not a member of the target project org' }, 403);
+  }
+
+  // If the user has any drawer assets registered, require the promoted
+  // asset to be one of them. This catches typos early. Users with an
+  // empty drawer can still promote free-form ids (backward compat for
+  // external flows that haven't adopted the drawer yet).
+  const drawerAssets = await drawerAssetStore.list(userId);
+  const kindMatches = drawerAssets.filter(a => a.assetKind === assetKind);
+  if (kindMatches.length > 0 && !kindMatches.some(a => a.assetId === assetId)) {
+    return c.json(
+      {
+        error:
+          `'${assetId}' is not registered in your drawer for kind '${assetKind}'. ` +
+          `Register it at POST /api/drawer/assets first, or pick one of: ` +
+          kindMatches.map(a => a.assetId).join(', '),
+      },
+      400,
+    );
   }
 
   const record = await promotionStore.request({
