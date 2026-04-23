@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import {
   fetchAPISafe,
@@ -107,31 +108,33 @@ export default async function WorkspacesPage() {
               ) : (
                 <ul className="divide-y divide-border/40">
                   {org.projects.map((p) => (
-                    <li
-                      key={p.id}
-                      className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/20"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[13px] font-medium">
-                            {p.name}
-                          </span>
-                          <code className="text-[11px] text-muted-foreground">
-                            @{p.slug}
-                          </code>
+                    <li key={p.id}>
+                      <Link
+                        href={`/dashboard/projects/${p.id}`}
+                        className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/20"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[13px] font-medium">
+                              {p.name}
+                            </span>
+                            <code className="text-[11px] text-muted-foreground">
+                              @{p.slug}
+                            </code>
+                          </div>
+                          {p.externalRef ? (
+                            <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                              {p.externalRef}
+                            </p>
+                          ) : null}
                         </div>
-                        {p.externalRef ? (
-                          <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                            {p.externalRef}
-                          </p>
-                        ) : null}
-                      </div>
-                      <Badge variant="outline" className="text-[11px]">
-                        {TYPE_LABEL[p.type]}
-                      </Badge>
-                      <Badge variant="secondary" className="text-[11px]">
-                        {VISIBILITY_LABEL[p.visibility] ?? p.visibility}
-                      </Badge>
+                        <Badge variant="outline" className="text-[11px]">
+                          {TYPE_LABEL[p.type]}
+                        </Badge>
+                        <Badge variant="secondary" className="text-[11px]">
+                          {VISIBILITY_LABEL[p.visibility] ?? p.visibility}
+                        </Badge>
+                      </Link>
                     </li>
                   ))}
                 </ul>
