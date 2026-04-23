@@ -43,7 +43,30 @@ describe('findRepoRoot', () => {
   it('throws a clear error when no matching root exists', () => {
     const lonely = join(tmp, 'unrelated', 'subdir');
     mkdirSync(lonely, { recursive: true });
-    expect(() => findRepoRoot(lonely)).toThrow(/airflux-agent-platform/);
+    expect(() => findRepoRoot(lonely)).toThrow(/airops\.config\.json/);
+  });
+
+  it('matches a repo with airops.config.json marker regardless of name', () => {
+    const root = join(tmp, 'any-name-repo');
+    const nested = join(root, 'packages', 'whatever');
+    mkdirSync(nested, { recursive: true });
+    writeFileSync(join(root, 'airops.config.json'), '{}');
+    writeFileSync(
+      join(root, 'package.json'),
+      JSON.stringify({ name: 'totally-unrelated' }),
+    );
+    expect(findRepoRoot(nested)).toBe(root);
+  });
+
+  it('matches a repo with package.json "airops" field', () => {
+    const root = join(tmp, 'any-name-repo');
+    const nested = join(root, 'sub');
+    mkdirSync(nested, { recursive: true });
+    writeFileSync(
+      join(root, 'package.json'),
+      JSON.stringify({ name: 'something-else', airops: { version: 1 } }),
+    );
+    expect(findRepoRoot(nested)).toBe(root);
   });
 
   it('returns the start directory itself when it is the root', () => {
