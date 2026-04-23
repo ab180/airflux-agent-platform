@@ -7,6 +7,7 @@
 import { getPgPool, isPostgresAvailable } from './pg.js';
 import { randomUUID } from 'crypto';
 import { getEnvironment, type StorageStrategy } from '../runtime/environment.js';
+import type { Conversation, ChatMessage } from '@airflux/runtime';
 
 /**
  * Which backend this store currently uses.
@@ -16,14 +17,7 @@ export function getConversationStoreBackend(): StorageStrategy {
   return getEnvironment().storageStrategy;
 }
 
-export interface Conversation {
-  id: string;
-  userId: string;
-  agent: string;
-  title: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
+export type { Conversation, ChatMessage };
 
 /** Get a single conversation if owned by the user. */
 export async function getConversation(
@@ -42,20 +36,6 @@ export async function getConversation(
   return (result.rows[0] as Conversation | undefined) || null;
 }
 
-export interface ChatMessage {
-  id: string;
-  conversationId: string;
-  role: 'user' | 'agent';
-  text: string;
-  agent?: string;
-  traceId?: string;
-  durationMs?: number;
-  inputTokens?: number;
-  outputTokens?: number;
-  model?: string;
-  toolCalls?: string[];
-  createdAt: string;
-}
 
 /** Create or get a conversation. */
 export async function getOrCreateConversation(

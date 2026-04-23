@@ -12,3 +12,16 @@ export type {
   FeedbackDetail,
   FeedbackStore,
 } from './feedback.js';
+export type { CostEntry, CostStore } from './cost.js';
+export type { PromptVersion, PromptStore } from './prompt.js';
+export type { SessionMessage, Session, SessionStore } from './session.js';
+export type {
+  Conversation,
+  ChatMessage,
+  ConversationStore,
+} from './conversation.js';
+export type {
+  ExecutionStatus,
+  ExecutionState,
+  ExecutionStateStore,
+} from './execution-state.js';

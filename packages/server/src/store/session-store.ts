@@ -1,18 +1,7 @@
 import { getDb } from './db.js';
+import type { SessionMessage, Session } from '@airflux/runtime';
 
-export interface SessionMessage {
-  role: 'user' | 'agent';
-  text: string;
-  agent?: string;
-  timestamp: string;
-}
-
-export interface Session {
-  id: string;
-  userId: string;
-  messages: SessionMessage[];
-  lastActivity: string;
-}
+export type { SessionMessage, Session };
 
 const MAX_MESSAGES_PER_SESSION = 20;
 

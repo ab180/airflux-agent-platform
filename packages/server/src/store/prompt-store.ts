@@ -1,14 +1,7 @@
 import { getDb } from './db.js';
+import type { PromptVersion } from '@airflux/runtime';
 
-export interface PromptVersion {
-  id: number;
-  agent: string;
-  version: string;
-  content: string;
-  description: string;
-  isCurrent: boolean;
-  createdAt: string;
-}
+export type { PromptVersion };
 
 let initialized = false;
 

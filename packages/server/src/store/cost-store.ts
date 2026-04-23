@@ -5,17 +5,9 @@
  */
 
 import { getPgPool, isPostgresAvailable } from './pg.js';
+import type { CostEntry } from '@airflux/runtime';
 
-export interface CostEntry {
-  agent: string;
-  model: string;
-  inputTokens: number;
-  outputTokens: number;
-  costUsd: number;
-  durationMs: number;
-  timestamp: string;
-  userId: string;
-}
+export type { CostEntry };
 
 /** Record a cost entry to PostgreSQL. */
 export async function recordCostPg(entry: CostEntry): Promise<void> {
