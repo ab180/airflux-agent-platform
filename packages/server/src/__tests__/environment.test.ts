@@ -5,6 +5,15 @@ describe('detectEnvironment', () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
     resetEnvironmentCache();
+    // Clear every env var the resolver reads so isolated expectations
+    // aren't poisoned by leftover stubs from neighbouring test files.
+    vi.stubEnv('AIROPS_MODE', '');
+    vi.stubEnv('AGENT_API_URL', '');
+    vi.stubEnv('AWS_LAMBDA_FUNCTION_NAME', '');
+    vi.stubEnv('DATABASE_URL', '');
+    vi.stubEnv('ANTHROPIC_API_KEY', '');
+    vi.stubEnv('OPENAI_API_KEY', '');
+    vi.stubEnv('NODE_ENV', 'test');
   });
 
   it('returns local when no AGENT_API_URL and no AWS_LAMBDA_FUNCTION_NAME', () => {
