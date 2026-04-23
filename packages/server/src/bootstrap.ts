@@ -19,7 +19,6 @@ import {
 import type {
   AgentConfig,
   AgentTool,
-  SkillDefinition,
   RoutingConfig,
   GlossaryConfig,
   FeatureFlagsConfig,
@@ -49,22 +48,10 @@ export async function bootstrap(settingsPath?: string): Promise<void> {
     logger.info('MCP tools registered', { count: mcpRegistry.all.length, tools: mcpRegistry.all });
   }
 
-  // 2. Load and register skills from YAML
-  try {
-    const skillsConfig = loadConfig<{ skills: Record<string, SkillDefinition> }>('skills');
-    if (skillsConfig?.skills) {
-      for (const [name, skill] of Object.entries(skillsConfig.skills)) {
-        SkillRegistry.register({ ...skill, name });
-      }
-      logger.info("Skills loaded", { count: Object.keys(skillsConfig.skills).length });
-    }
-  } catch (e) {
-    logger.warn('No skills config found, continuing with defaults');
-  }
-
-  // 2b. Load markdown-format skills from settings/skills/*.md (additive).
-  // These extend or override YAML-loaded skills by name. Missing directory
-  // is fine — markdown format is optional for now.
+  // 2. Load and register skills from settings/skills/*.md.
+  // Markdown is now the canonical skill format — frontmatter carries
+  // metadata, body becomes the skill's `instructions` injected into the
+  // system prompt when the agent declares the skill.
   try {
     const { loadSkillsFromMarkdownDir, getSettingsDir } = await import('@airflux/core');
     const { existsSync } = await import('node:fs');
@@ -75,9 +62,9 @@ export async function bootstrap(settingsPath?: string): Promise<void> {
       for (const skill of mdSkills) {
         SkillRegistry.register(skill);
       }
-      if (mdSkills.length > 0) {
-        logger.info('Markdown skills loaded', { count: mdSkills.length });
-      }
+      logger.info('Skills loaded', { count: mdSkills.length, format: 'markdown' });
+    } else {
+      logger.warn('No settings/skills/ directory found, continuing with 0 skills');
     }
   } catch (e) {
     logger.warn('Markdown skill loader failed', { error: (e as Error).message });
