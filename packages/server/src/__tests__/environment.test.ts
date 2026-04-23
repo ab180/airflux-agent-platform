@@ -58,4 +58,56 @@ describe('detectEnvironment', () => {
     expect(env.mode).toBe('local');
     expect(env.storageStrategy).toBe('postgres');
   });
+
+  describe('runMode / deployment (v2 axes)', () => {
+    it('default is runMode=local, deployment=dev on a laptop', () => {
+      vi.stubEnv('AGENT_API_URL', '');
+      vi.stubEnv('AWS_LAMBDA_FUNCTION_NAME', '');
+      vi.stubEnv('AIROPS_MODE', '');
+      const env = detectEnvironment();
+      expect(env.runMode).toBe('local');
+      expect(env.deployment).toBe('dev');
+    });
+
+    it('AIROPS_MODE=team switches to team runMode', () => {
+      vi.stubEnv('AIROPS_MODE', 'team');
+      vi.stubEnv('AGENT_API_URL', '');
+      vi.stubEnv('AWS_LAMBDA_FUNCTION_NAME', '');
+      vi.stubEnv('ANTHROPIC_API_KEY', 'sk-test');
+      const env = detectEnvironment();
+      expect(env.runMode).toBe('team');
+      expect(env.credentialStrategy).toBe('api-key');
+      expect(env.authStrategy).toBe('oidc');
+    });
+
+    it('team runMode without API key still sets api-key strategy (fails loud at call time)', () => {
+      vi.stubEnv('AIROPS_MODE', 'team');
+      vi.stubEnv('AGENT_API_URL', '');
+      vi.stubEnv('AWS_LAMBDA_FUNCTION_NAME', '');
+      vi.stubEnv('ANTHROPIC_API_KEY', '');
+      vi.stubEnv('OPENAI_API_KEY', '');
+      const env = detectEnvironment();
+      expect(env.runMode).toBe('team');
+      expect(env.credentialStrategy).toBe('api-key');
+    });
+
+    it('Lambda → deployment=container, runMode=team', () => {
+      vi.stubEnv('AWS_LAMBDA_FUNCTION_NAME', 'airflux-agent');
+      vi.stubEnv('AGENT_API_URL', '');
+      const env = detectEnvironment();
+      expect(env.runMode).toBe('team');
+      expect(env.deployment).toBe('container');
+      expect(env.credentialStrategy).toBe('bedrock');
+    });
+
+    it('legacy mode derives from runMode', () => {
+      vi.stubEnv('AIROPS_MODE', 'team');
+      vi.stubEnv('ANTHROPIC_API_KEY', 'sk-test');
+      expect(detectEnvironment().mode).toBe('production');
+
+      resetEnvironmentCache();
+      vi.stubEnv('AIROPS_MODE', 'local');
+      expect(detectEnvironment().mode).toBe('local');
+    });
+  });
 });
