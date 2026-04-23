@@ -178,6 +178,112 @@ describe('POST /api/orgs', () => {
   });
 });
 
+describe('project member management', () => {
+  beforeEach(() => {
+    cleanAll();
+    vi.unstubAllEnvs();
+    resetEnvironmentCache();
+    vi.stubEnv('AIROPS_MODE', 'local');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    resetEnvironmentCache();
+  });
+
+  async function seedProjectWithLocalMaintainer() {
+    const org = await orgStore.createOrg({ slug: 'o', name: 'O' });
+    await membershipStore.addOrgMember({ orgId: org.id, userId: 'local', role: 'admin' });
+    const project = await projectStore.createProject({
+      orgId: org.id, slug: 'p', name: 'P', type: 'docs', visibility: 'internal',
+    });
+    await membershipStore.addProjectMember({
+      projectId: project.id, userId: 'local', role: 'maintainer',
+    });
+    return { org, project };
+  }
+
+  it('POST adds a member', async () => {
+    const { project } = await seedProjectWithLocalMaintainer();
+    const res = await makeApp().request(
+      `/api/projects/${project.id}/members`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ userId: 'alice', role: 'contributor' }),
+      },
+    );
+    expect(res.status).toBe(201);
+    const members = await membershipStore.listProjectMembers(project.id);
+    expect(members).toHaveLength(2);
+    expect(members.find(m => m.userId === 'alice')?.role).toBe('contributor');
+  });
+
+  it('PATCH updates a member role', async () => {
+    const { project } = await seedProjectWithLocalMaintainer();
+    await membershipStore.addProjectMember({
+      projectId: project.id, userId: 'alice', role: 'viewer',
+    });
+    const res = await makeApp().request(
+      `/api/projects/${project.id}/members/alice`,
+      {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ role: 'maintainer' }),
+      },
+    );
+    expect(res.status).toBe(200);
+    expect(
+      await membershipStore.userRoleInProject('alice', project.id),
+    ).toBe('maintainer');
+  });
+
+  it('DELETE removes a member', async () => {
+    const { project } = await seedProjectWithLocalMaintainer();
+    await membershipStore.addProjectMember({
+      projectId: project.id, userId: 'alice', role: 'runner',
+    });
+    const res = await makeApp().request(
+      `/api/projects/${project.id}/members/alice`,
+      { method: 'DELETE' },
+    );
+    expect(res.status).toBe(200);
+    expect(
+      await membershipStore.userRoleInProject('alice', project.id),
+    ).toBeNull();
+  });
+
+  it('DELETE refuses to remove the last maintainer', async () => {
+    const { project } = await seedProjectWithLocalMaintainer();
+    const res = await makeApp().request(
+      `/api/projects/${project.id}/members/local`,
+      { method: 'DELETE' },
+    );
+    expect(res.status).toBe(409);
+    expect(
+      await membershipStore.userRoleInProject('local', project.id),
+    ).toBe('maintainer');
+  });
+
+  it('403 when caller is not a maintainer', async () => {
+    const org = await orgStore.createOrg({ slug: 'o', name: 'O' });
+    const project = await projectStore.createProject({
+      orgId: org.id, slug: 'p', name: 'P', type: 'docs', visibility: 'internal',
+    });
+    await membershipStore.addProjectMember({
+      projectId: project.id, userId: 'local', role: 'viewer',
+    });
+    const res = await makeApp().request(
+      `/api/projects/${project.id}/members`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ userId: 'x', role: 'runner' }),
+      },
+    );
+    expect(res.status).toBe(403);
+  });
+});
+
 describe('POST /api/orgs/:orgId/projects', () => {
   beforeEach(() => {
     cleanAll();

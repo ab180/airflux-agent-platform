@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import type { Org, Project, ProjectType, ProjectVisibility } from '@airflux/runtime';
+import type { Org, Project, ProjectRole, ProjectType, ProjectVisibility } from '@airflux/runtime';
 import {
   SqliteOrgStore,
   SqliteMembershipStore,
@@ -25,6 +25,9 @@ function currentUser(headers: Headers): string {
 const PROJECT_TYPES: readonly ProjectType[] = ['code-repo', 'docs', 'objective'] as const;
 const PROJECT_VISIBILITIES: readonly ProjectVisibility[] = [
   'private', 'internal', 'public',
+] as const;
+const PROJECT_ROLES: readonly ProjectRole[] = [
+  'maintainer', 'contributor', 'runner', 'viewer',
 ] as const;
 
 function validateSlug(slug: unknown): string | null {
@@ -89,6 +92,130 @@ workspacesRoute.get('/projects/:projectId', async (c) => {
     callerRole: role,
     members,
   });
+});
+
+/**
+ * POST /api/projects/:projectId/members  { userId, role }
+ * Maintainer only. Idempotent (INSERT OR IGNORE). To change an existing
+ * member's role use PATCH instead.
+ */
+workspacesRoute.post('/projects/:projectId/members', async (c) => {
+  const projectId = c.req.param('projectId');
+  const caller = currentUser(new Headers(c.req.raw.headers));
+  const callerRole = await membershipStore.userRoleInProject(caller, projectId);
+  if (callerRole !== 'maintainer') {
+    return c.json({ error: 'only project maintainers can manage members' }, 403);
+  }
+
+  let body: { userId?: unknown; role?: unknown };
+  try {
+    body = (await c.req.json()) as typeof body;
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+  const targetUserId =
+    typeof body.userId === 'string' && body.userId.trim()
+      ? body.userId.trim()
+      : null;
+  if (!targetUserId) return c.json({ error: 'userId is required' }, 400);
+  const role = PROJECT_ROLES.find(r => r === body.role);
+  if (!role) {
+    return c.json(
+      { error: `role must be one of: ${PROJECT_ROLES.join(', ')}` },
+      400,
+    );
+  }
+
+  await membershipStore.addProjectMember({
+    projectId, userId: targetUserId, role,
+  });
+  logAudit({
+    userId: caller,
+    action: 'project.member.add',
+    resource: `project:${projectId}`,
+    outcome: 'success',
+    metadata: { targetUserId, role },
+  });
+  return c.json({ projectId, userId: targetUserId, role }, 201);
+});
+
+/**
+ * PATCH /api/projects/:projectId/members/:userId  { role }
+ * Maintainer only. Updates an existing member's role.
+ */
+workspacesRoute.patch('/projects/:projectId/members/:userId', async (c) => {
+  const projectId = c.req.param('projectId');
+  const targetUserId = c.req.param('userId');
+  const caller = currentUser(new Headers(c.req.raw.headers));
+  const callerRole = await membershipStore.userRoleInProject(caller, projectId);
+  if (callerRole !== 'maintainer') {
+    return c.json({ error: 'only project maintainers can manage members' }, 403);
+  }
+
+  let body: { role?: unknown };
+  try {
+    body = (await c.req.json()) as typeof body;
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400);
+  }
+  const role = PROJECT_ROLES.find(r => r === body.role);
+  if (!role) {
+    return c.json(
+      { error: `role must be one of: ${PROJECT_ROLES.join(', ')}` },
+      400,
+    );
+  }
+
+  const ok = await membershipStore.updateProjectMemberRole(
+    projectId, targetUserId, role,
+  );
+  if (!ok) return c.json({ error: 'member not found' }, 404);
+
+  logAudit({
+    userId: caller,
+    action: 'project.member.update-role',
+    resource: `project:${projectId}`,
+    outcome: 'success',
+    metadata: { targetUserId, role },
+  });
+  return c.json({ projectId, userId: targetUserId, role });
+});
+
+/**
+ * DELETE /api/projects/:projectId/members/:userId
+ * Maintainer only. Cannot remove the last maintainer — we keep at least
+ * one so the project isn't orphaned.
+ */
+workspacesRoute.delete('/projects/:projectId/members/:userId', async (c) => {
+  const projectId = c.req.param('projectId');
+  const targetUserId = c.req.param('userId');
+  const caller = currentUser(new Headers(c.req.raw.headers));
+  const callerRole = await membershipStore.userRoleInProject(caller, projectId);
+  if (callerRole !== 'maintainer') {
+    return c.json({ error: 'only project maintainers can manage members' }, 403);
+  }
+
+  const members = await membershipStore.listProjectMembers(projectId);
+  const maintainers = members.filter(m => m.role === 'maintainer');
+  const target = members.find(m => m.userId === targetUserId);
+  if (!target) return c.json({ error: 'member not found' }, 404);
+  if (target.role === 'maintainer' && maintainers.length <= 1) {
+    return c.json(
+      { error: 'cannot remove the last maintainer of the project' },
+      409,
+    );
+  }
+
+  const ok = await membershipStore.removeProjectMember(projectId, targetUserId);
+  if (!ok) return c.json({ error: 'member not found' }, 404);
+  logAudit({
+    userId: caller,
+    action: 'project.member.remove',
+    resource: `project:${projectId}`,
+    outcome: 'success',
+    metadata: { targetUserId },
+  });
+  return c.json({ ok: true });
 });
 
 /**

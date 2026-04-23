@@ -73,4 +73,33 @@ export class SqliteMembershipStore implements MembershipStore {
       .get(userId, projectId) as { role: ProjectRole } | undefined;
     return row ? row.role : null;
   }
+
+  async updateProjectMemberRole(
+    projectId: string,
+    userId: string,
+    role: ProjectRole,
+  ): Promise<boolean> {
+    ensureCollabTables();
+    const result = getDb()
+      .prepare(
+        `UPDATE project_memberships SET role = ?
+         WHERE project_id = ? AND user_id = ?`,
+      )
+      .run(role, projectId, userId);
+    return result.changes > 0;
+  }
+
+  async removeProjectMember(
+    projectId: string,
+    userId: string,
+  ): Promise<boolean> {
+    ensureCollabTables();
+    const result = getDb()
+      .prepare(
+        `DELETE FROM project_memberships
+         WHERE project_id = ? AND user_id = ?`,
+      )
+      .run(projectId, userId);
+    return result.changes > 0;
+  }
 }

@@ -120,6 +120,12 @@ export interface ProjectStore {
 export interface MembershipStore {
   addOrgMember(m: Omit<OrgMembership, 'joinedAt'>): Promise<void>;
   addProjectMember(m: Omit<ProjectMembership, 'joinedAt'>): Promise<void>;
+  updateProjectMemberRole(
+    projectId: string,
+    userId: string,
+    role: ProjectRole,
+  ): Promise<boolean>;
+  removeProjectMember(projectId: string, userId: string): Promise<boolean>;
   listProjectMembers(projectId: string): Promise<ProjectMembership[]>;
   userRoleInProject(userId: string, projectId: string): Promise<ProjectRole | null>;
 }

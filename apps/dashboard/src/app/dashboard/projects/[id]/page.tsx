@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { PromotionDecision } from "@/components/dashboard/promotion-decision";
+import { MemberManager } from "@/components/dashboard/member-manager";
 import {
   fetchAPI,
   fetchAPISafe,
@@ -9,6 +10,7 @@ import {
   type ProjectType,
   type PromotionRecord,
   type WorkspaceProject,
+  type WorkspaceResponse,
 } from "@/lib/api";
 
 interface ProjectDetailResponse {
@@ -55,6 +57,14 @@ export default async function ProjectDetailPage({
     `/api/promotions?projectId=${encodeURIComponent(id)}`,
     { promotions: [] },
   );
+  // workspaces API happens to expose the caller's userId — reuse it for the
+  // "can't demote yourself" guard inside MemberManager.
+  const workspace = await fetchAPISafe<WorkspaceResponse>("/api/workspaces", {
+    userId: "local",
+    runMode: "local",
+    drawer: { userId: "local", createdAt: "" },
+    orgs: [],
+  });
 
   const isMaintainer = detail.callerRole === "maintainer";
 
@@ -105,24 +115,16 @@ export default async function ProjectDetailPage({
         <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
           멤버 ({detail.members.length})
         </h2>
-        <ul className="divide-y divide-border/40 rounded-lg border border-border/50">
-          {detail.members.map((m) => (
-            <li
-              key={`${m.projectId}-${m.userId}`}
-              className="flex items-center justify-between px-4 py-2.5"
-            >
-              <div>
-                <p className="text-[13px] font-medium">@{m.userId}</p>
-                <p className="text-[11px] text-muted-foreground">
-                  {new Date(m.joinedAt).toLocaleDateString("ko-KR")} 참여
-                </p>
-              </div>
-              <Badge variant="secondary" className="text-[11px]">
-                {ROLE_LABEL[m.role]}
-              </Badge>
-            </li>
-          ))}
-        </ul>
+        <MemberManager
+          projectId={detail.project.id}
+          canManage={isMaintainer}
+          callerId={workspace.userId}
+          members={detail.members.map((m) => ({
+            userId: m.userId,
+            role: m.role,
+            joinedAt: m.joinedAt,
+          }))}
+        />
       </section>
 
       {/* Pending promotions */}
