@@ -6,6 +6,7 @@ import { ThemeToggle } from "@/components/dashboard/theme-toggle";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "현황", icon: GridIcon },
+  { href: "/dashboard/workspaces", label: "워크스페이스", icon: FolderIcon },
   { href: "/dashboard/agents", label: "에이전트", icon: BotIcon },
   { href: "/dashboard/skills", label: "스킬", icon: ZapIcon },
   { href: "/dashboard/tools", label: "도구", icon: WrenchIcon },
@@ -167,6 +168,14 @@ function ClockIcon({ className }: { className?: string }) {
     <svg className={className} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
       <circle cx="8" cy="8" r="6" />
       <path d="M8 4.5V8l2.5 1.5" />
+    </svg>
+  );
+}
+
+function FolderIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 4.5a1 1 0 011-1h3.5l1.5 1.5H13a1 1 0 011 1V12a1 1 0 01-1 1H3a1 1 0 01-1-1V4.5z" />
     </svg>
   );
 }
