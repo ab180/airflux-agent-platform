@@ -19,7 +19,7 @@
 | BL-002 | P1 | FROZEN 항목 1건 검토 | `docs/FROZEN.md`에서 항목 1개 골라 현재 상태 검토 + 해제 가능 여부 판단 + 결과 문서화 (해제든 보류든). 코드 변경 최소. | in-pr | 0 | https://github.com/ab180/airflux-agent-platform/pull/13 |
 | BL-003 | P1 | 커버리지 부족 모듈 1개 보강 | `packages/server` 또는 `packages/core`에서 vitest 커버리지가 낮은 모듈 1개 선정해 단위 테스트 추가. 새 테스트 모두 green. | in-pr | 0 | https://github.com/ab180/airflux-agent-platform/pull/13 |
 | BL-004 | P2 | OSS split 경계 문서 일관성 | `README.md`, `CONTRIBUTING.md` (없으면 생성), `packages/server/src/ab180-extensions/AGENTS.md`가 ab180-extensions 경계를 같은 톤으로 설명. | in-pr | 0 | https://github.com/ab180/airflux-agent-platform/pull/13 |
-| BL-005 | P2 | dead code / unused export 정리 | knip 또는 ts-prune 1회 통과. 명백히 unused 한 export 5건 이상 제거. 빌드/테스트 green. | open | 0 | - |
+| BL-005 | P2 | dead code / unused export 정리 | knip 또는 ts-prune 1회 통과. 명백히 unused 한 export 5건 이상 제거. 빌드/테스트 green. | in-pr | 0 | https://github.com/ab180/airflux-agent-platform/pull/13 |
 
 ## In-Progress / Done / Stuck
 
