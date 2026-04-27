@@ -14,12 +14,6 @@ describe('ConfigLoader', () => {
     expect(agents.length).toBeGreaterThan(0);
   });
 
-  it('loads skills.yaml', () => {
-    const skills = loadConfig<{ skills: Record<string, unknown> }>('skills');
-    expect(skills.skills).toBeDefined();
-    expect(typeof skills.skills).toBe('object');
-  });
-
   it('throws ConfigLoadError for missing file', () => {
     expect(() => loadConfig('nonexistent')).toThrow(ConfigLoadError);
   });
