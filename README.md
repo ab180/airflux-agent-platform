@@ -4,6 +4,11 @@ AB180 사내 AI 에이전트 관리 플랫폼. 에이전트를 등록/설정/모
 
 ## Quickstart
 
+처음이면 [`docs/quickstart.md`](docs/quickstart.md) (첫 5분 절차 + 트러블슈팅 1쪽) 를 먼저 보세요.
+한 명령으로 Postgres + 서버 + 대시보드를 띄우려면 `npx airops start` (아래 [로컬 개발 (airops CLI)](#로컬-개발-airops-cli) 참조).
+
+직접 단계별로 띄우려면:
+
 ```bash
 # 1. 의존성 설치
 npm install
