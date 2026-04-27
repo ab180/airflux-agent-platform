@@ -22,6 +22,20 @@ not being extended. Each entry states:
   `ops-agent` in `settings/agents.yaml`. Scheduler already skips disabled
   entries (see `scheduler.ts:47`).
 - **Owner**: Hyeonjae
+- **Review 2026-04-27 — verdict: HOLD.**
+  - `settings/agents.yaml:64` — heartbeat schedule still `enabled: false`
+    with FROZEN annotation; FROZEN guard comment intact at
+    `packages/server/src/scheduler/scheduler.ts:10-16`.
+  - `settings/cron-reports.yaml` does not exist; the schema is marked
+    `ARCHIVED — scheduler heartbeat FROZEN` in
+    `docs/design/reference/03-config-schemas.md`.
+  - The only registered cron task is `daily-eval`, gated behind
+    `AIRFLUX_ENABLE_DAILY_EVAL=true` (eval runner, not a user-facing
+    scheduled report).
+  - `docs/STATUS.md` makes no mention of scheduled reports being live.
+  - **Conclusion:** zero scheduled reports in production → unfreeze
+    condition (≥2 reports + positive feedback) is **not met**. Continue to
+    hold; revisit when the first cron-report ships.
 
 ### 2. Inter-agent message bus (expansion)
 
