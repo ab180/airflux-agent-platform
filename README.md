@@ -187,6 +187,32 @@ docker run -p 3000:3000 -e ANTHROPIC_API_KEY=sk-ant-... airflux
 
 자세한 설계는 `docs/design/` 참조. 읽는 순서는 `CLAUDE.md` 참고.
 
+## OSS split 경계 — `ab180-extensions/`
+
+이 레포는 범용 OSS `airops` 의 레퍼런스 구현이자 AB180 사내 인스턴스를
+겸합니다. AB180 도메인(Airbridge / Snowflake / 한국어 비즈니스 용어)에
+의존하는 코드는 단 한 곳에만 둡니다:
+
+```
+packages/server/src/ab180-extensions/
+```
+
+핵심 규칙(상세는 [`packages/server/src/ab180-extensions/AGENTS.md`](packages/server/src/ab180-extensions/AGENTS.md)):
+
+- **일반 코드는 이 디렉터리를 import 하지 않는다.** `bootstrap.ts` 가
+  `hasAb180Config()` 게이트 뒤에서만 동적으로 로드한다. 라우트, 스토어,
+  agent 런타임은 도메인-중립으로 유지.
+- **도메인 누출 금지.** Airflux/Airbridge/Snowflake 를 직접 참조하는
+  툴 이름·라벨·에러 메시지·프롬프트는 모두 이 디렉터리 안에. 일반 툴은
+  `bootstrap.ts` 의 `registerBuiltInTools()` 로.
+- **추가만 허용.** `registerAb180Tools()` 는 새 tool id 를 등록할 뿐,
+  일반 툴을 변경/덮어쓰지 않는다.
+- **설정 파일은 optional.** YAML 이 비어있거나 없어도 throw 하지 않게
+  `loadConfigOptional` 만 사용.
+
+장기 목표는 이 디렉터리를 별도 private 패키지(`@airops-ab180/tools`)
+로 분리하고, 이 레포는 generic `@airops/*` 만 남기는 것입니다.
+
 ## 로컬 개발 (airops CLI)
 
 Postgres(Docker) + server + dashboard 를 한 번에 띄우고 끕니다.
