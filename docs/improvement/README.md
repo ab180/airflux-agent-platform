@@ -9,14 +9,16 @@ airops 레포 자체를 자동으로 점진 개선하는 unattended loop.
 ralph-loop (외부 러너)
    └─ /improve-airops (한 iteration prompt)
         ├─ 1. backlog top open 항목 pick
-        ├─ 2. improve/<id-slug> 브랜치
+        ├─ 2. 단일 누적 브랜치 improve/auto 준비 (없으면 lyon-v1에서 분기)
         ├─ 3. 작업
         ├─ 4. build + test + lint 검증
-        ├─ 5. PR 생성 (base: lyon-v1)
+        ├─ 5. commit + push improve/auto (PR이 없으면 첫 iteration에 1번만 생성)
         ├─ 6. backlog 상태 갱신 (lyon-v1 직접 push)
         ├─ 7. 일일 로그 append
         └─ 8. ITERATION_COMPLETE 또는 BACKLOG_EMPTY 출력
 ```
+
+**모든 iteration은 단일 PR에 commit이 누적된다.** 매 iteration이 별개 PR을 만들지 않는다.
 
 다음 iteration은 ralph-loop의 Stop hook으로 자동 재진입.
 
@@ -38,7 +40,8 @@ ralph-loop (외부 러너)
 
 ## 진행 상황 확인
 
-- 새 PR: `gh pr list --state open --search "improve("`
+- 누적 PR: `gh pr list --head improve/auto --base lyon-v1`
+- PR 커밋 누적: `gh pr view --head improve/auto -q .commits`
 - 일일 로그: `docs/improvement/log/YYYY-MM-DD.md`
 - 백로그 상태: `docs/improvement/backlog.md`
 

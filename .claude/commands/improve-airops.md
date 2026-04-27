@@ -11,7 +11,8 @@ description: One iteration of airops self-improvement (ralph-loop driven)
 
 - 모든 명령은 `.claude/settings.local.json` allow에 사전 등록되어 사용자 confirmation 없이 실행됩니다.
 - destructive 명령은 deny + `.claude/hooks/pre-bash.sh`로 차단됩니다.
-- main / master / 다른 사용자 브랜치 작업 금지. 작업 브랜치는 항상 `improve/<id>-<short-slug>`.
+- main / master / 다른 사용자 브랜치 작업 금지.
+- **모든 iteration은 단일 누적 브랜치 `improve/auto`에 커밋한다.** 매 iteration이 새 PR을 만들지 않고, 이미 열린 PR에 커밋이 누적된다.
 - PR base 브랜치는 `lyon-v1`. 절대 main 아님.
 
 ## 컨텍스트 관리 (필수)
@@ -29,12 +30,13 @@ description: One iteration of airops self-improvement (ralph-loop driven)
 - "## Open" 표에서 `status=open` 그리고 `attempts<3`인 항목 중 **priority가 가장 높은 1개** 선택 (P0 > P1 > P2).
 - 그런 항목이 0개라면 **마지막 줄에 정확히 `BACKLOG_EMPTY` 출력 후 즉시 종료**. (이 토큰이 ralph-loop completion-promise.)
 
-### 2. 브랜치 생성
+### 2. 브랜치 준비 (단일 누적 브랜치 `improve/auto`)
 
-- 현재 브랜치가 `lyon-v1`인지 확인 (`git status`). 아니면 `git checkout lyon-v1`.
+- `git checkout lyon-v1` (먼저 lyon-v1로).
 - `git pull --ff-only origin lyon-v1` (실패 시 다음 iteration로 양보, BACKLOG_EMPTY 출력 X, 그냥 종료).
-- slug = id 소문자 + title의 첫 단어 2-3개 kebab-case (예: `bl-001-first-five-min`).
-- `git checkout -b improve/<slug>`.
+- `git fetch origin improve/auto` 시도.
+  - **`improve/auto`가 origin에 있으면**: `git checkout improve/auto` 후 `git pull --ff-only origin improve/auto` (실패 시 종료).
+  - **없으면 (첫 iteration)**: `git checkout -b improve/auto` (lyon-v1에서 분기).
 
 ### 3. 작업 수행
 
@@ -53,25 +55,26 @@ npm test 2>&1 | tail -50
 npm run lint 2>&1 | tail -50
 ```
 
-### 5. PR 생성 (검증 모두 green일 때)
+### 5. 커밋 + push + (필요 시) PR 생성
 
 - `git add` 변경된 파일만. `.env`, `*credentials*`, `.claude/`, `node_modules/` 제외.
 - `git commit -m "improve(<id>): <title>"`.
-- `git push -u origin improve/<slug>`.
-- `gh pr create --base lyon-v1 --title "improve(<id>): <title>" --body "$(printf '## Backlog item\n- id: %s\n- title: %s\n\n## 변경 요약\n%s\n\n## 검증\n- build: green\n- test: green\n- lint: green\n' "<id>" "<title>" "<3-5줄 요약>")"`.
-- 출력 PR URL 기억.
+- `git push -u origin improve/auto`.
+- **PR 존재 확인**: `gh pr list --head improve/auto --base lyon-v1 --state open --json number -q '.[0].number'`.
+  - **결과가 빈 값이면 (PR 없음, 첫 iteration)**: `gh pr create --base lyon-v1 --head improve/auto --title "improve: self-improvement loop (cumulative)" --body "$(printf 'Self-improvement loop이 매 iteration마다 이 PR에 commit을 누적합니다.\n\n진행 상황: docs/improvement/backlog.md\n일일 로그: docs/improvement/log/\n\n첫 iteration: improve(%s): %s' "<id>" "<title>")"`. 출력 PR URL 기억.
+  - **이미 있으면 (PR 존재)**: 새 PR 생성 안 함. 기존 PR URL을 그대로 사용 (위 명령 결과 + `gh pr view --json url -q .url`).
 
 ### 6. 백로그 갱신
 
-**Success 경로** (PR 생성 성공):
+**Success 경로** (커밋/push 성공):
 - `git checkout lyon-v1`.
-- `docs/improvement/backlog.md`에서 해당 항목의 `status`를 `in-pr`, `pr` 칸에 URL 기입.
+- `docs/improvement/backlog.md`에서 해당 항목의 `status`를 `in-pr`, `pr` 칸에 PR URL 기입 (모든 항목이 같은 PR URL을 가리킴).
 - `git add docs/improvement/backlog.md`.
 - `git commit -m "chore(backlog): mark <id> as in-pr"`.
 - `git push origin lyon-v1`.
 
 **Fail 경로** (검증 fail / diff cap 초과 / 다른 에러):
-- 작업 브랜치에서: `git restore .` `git clean -fd` `git checkout lyon-v1` `git branch -D improve/<slug>`.
+- `improve/auto`에서: `git restore .` `git clean -fd` `git checkout lyon-v1`. **`improve/auto` 브랜치는 삭제하지 않는다** (이전 iteration commit이 살아있음).
 - `docs/improvement/backlog.md`에서 해당 항목 `attempts++`. attempts >= 3이면 status=`stuck`.
 - `git add docs/improvement/backlog.md` → `git commit -m "chore(backlog): <id> attempt failed"` → `git push origin lyon-v1`.
 
