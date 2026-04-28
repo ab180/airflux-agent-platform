@@ -39,7 +39,7 @@
 | BL-003 | P1 | 커버리지 부족 모듈 1개 보강 | `packages/server` 또는 `packages/core`에서 vitest 커버리지가 낮은 모듈 1개 선정해 단위 테스트 추가. 새 테스트 모두 green. | in-pr | 0 | https://github.com/ab180/airflux-agent-platform/pull/13 |
 | BL-004 | P2 | OSS split 경계 문서 일관성 | `README.md`, `CONTRIBUTING.md` (없으면 생성), `packages/server/src/ab180-extensions/AGENTS.md`가 ab180-extensions 경계를 같은 톤으로 설명. | in-pr | 0 | https://github.com/ab180/airflux-agent-platform/pull/13 |
 | BL-005 | P2 | dead code / unused export 정리 | knip 또는 ts-prune 1회 통과. 명백히 unused 한 export 5건 이상 제거. 빌드/테스트 green. | in-pr | 0 | https://github.com/ab180/airflux-agent-platform/pull/13 |
-| BL-006 | P2 | shadcn 미사용 UI 컴포넌트 제거 | `npx knip --include files` 출력에서 `apps/dashboard/src/components/ui/card.tsx`, `apps/dashboard/src/components/ui/scroll-area.tsx` 두 파일이 외부 importer 0개로 보고됨 (`grep -rn "ui/card\|ScrollArea" apps/dashboard/src` 로 교차 확인 — StatCard는 별도 파일). 두 파일 삭제, 빌드/테스트 green. | open | 0 | - |
+| BL-006 | P2 | shadcn 미사용 UI 컴포넌트 제거 | `npx knip --include files` 출력에서 `apps/dashboard/src/components/ui/card.tsx`, `apps/dashboard/src/components/ui/scroll-area.tsx` 두 파일이 외부 importer 0개로 보고됨 (`grep -rn "ui/card\|ScrollArea" apps/dashboard/src` 로 교차 확인 — StatCard는 별도 파일). 두 파일 삭제, 빌드/테스트 green. | in-pr | 0 | https://github.com/ab180/airflux-agent-platform/pull/13 |
 
 ## In-Progress / Done / Stuck
 
