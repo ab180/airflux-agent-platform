@@ -14,3 +14,6 @@ data/
 .gstack/
 .DS_Store
 .airops/
+
+# autopilot-skills is a sibling repo skeleton; not part of this project's git
+autopilot-skills/
