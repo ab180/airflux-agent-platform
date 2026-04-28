@@ -9,7 +9,26 @@
 - 항목당 `attempts` ≤ 3. 초과 시 status를 `stuck`으로 바꾸고 skip.
 - 새 PR이 만들어지면 같은 PR에 `improve(<id>): <title>` 커밋 1개 + backlog 갱신은 lyon-v1에 직접 commit.
 - diff cap: 한 PR diff ≤ 500 lines, files ≤ 15. 초과 시 항목을 sub-task로 쪼개고 첫 sub-task만 처리.
-- 새 백로그 추가는 사용자 권한 (loop이 임의로 추가 금지).
+
+### 백로그 항목 추가 권한
+
+- **사용자**: 모든 우선순위 (P0/P1/P2) 추가 가능. 자유 텍스트 acceptance 허용.
+- **`improve-curator` skill (manager)**: P1, P2만 추가 가능. **P0는 사용자 전용.**
+  자동 분석 도구 출력만 근거로 인용. 모델의 임의 의견은 거부.
+- **`improve-airops` skill (worker)**: 직접 추가 금지. backlog가 비면 curator를 호출하고, curator도 추가 안 하면 `BACKLOG_EMPTY` 종료.
+
+### Curator 가드레일 (산만함 방지)
+
+- 한 호출에 추가 **최대 1건**.
+- backlog의 `status=open` 누적 **≤ 3건**. 3건 이상이면 추가 금지하고 종료.
+- 후보 근거는 **자동 분석 도구 출력만** 허용:
+  `ts-prune`, `eslint`, `knip`, `tsc --noEmit`, `npm test --coverage`, vitest 빌드 경고, `git log` 패턴.
+- 새 항목 acceptance에 **근거 명령 + 출력 일부**를 인용해야 함 (예: `ts-prune found "X" at path:line`).
+- 기존 open / in-pr / 최근 done 항목과 **중복/유사 시 reject** + 사유 1줄 명시 후 종료.
+- 우선순위 기준:
+  - **P1**: 빌드 경고, 보안 lint, 명백한 dead code 5건+, 미사용 dependency, 깨진 baseline 테스트.
+  - **P2**: 문서 톤 일관성, 사소한 dead export, 내부 명명 일관성.
+  - **그 외 (의견/리팩터/스타일)**: 추가 금지 — 사용자가 직접 추가해야 함.
 
 ## Open
 

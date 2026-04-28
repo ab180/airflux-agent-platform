@@ -28,7 +28,11 @@ description: One iteration of airops self-improvement (ralph-loop driven)
 
 - `docs/improvement/backlog.md`를 Read.
 - "## Open" 표에서 `status=open` 그리고 `attempts<3`인 항목 중 **priority가 가장 높은 1개** 선택 (P0 > P1 > P2).
-- 그런 항목이 0개라면 **마지막 줄에 정확히 `BACKLOG_EMPTY` 출력 후 즉시 종료**. (이 토큰이 ralph-loop completion-promise.)
+- **그런 항목이 0개라면**:
+  1. `improve-curator` skill을 1회 호출 (Skill 도구로 invoke).
+  2. curator가 `CURATOR_ADDED` 를 출력했으면 backlog를 다시 Read 하고 새 항목 1건을 선택해서 절차 계속.
+  3. curator가 `CURATOR_NO_CANDIDATE` 또는 `BACKLOG_FULL` 을 출력했으면 **마지막 줄에 정확히 `BACKLOG_EMPTY` 출력 후 종료**. (이 토큰이 loop completion-promise.)
+- worker는 직접 backlog에 항목을 추가하지 않습니다 — 항상 curator를 거칩니다.
 
 ### 2. 브랜치 준비 (단일 누적 브랜치 `improve/auto`)
 
