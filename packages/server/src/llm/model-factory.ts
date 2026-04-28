@@ -543,12 +543,6 @@ export async function createModelAsync(tier: ModelTier = 'default'): Promise<Ret
   throw new Error('No LLM available. Set ANTHROPIC_API_KEY or run `claude login`.');
 }
 
-/** Synchronous version for backward compat — only works with API key, not OAuth */
-export function createModel(tier: ModelTier = 'default'): ReturnType<ReturnType<typeof createAnthropic>> {
-  const apiKey = getAnthropicApiKey(); // throws if not set
-  return createAnthropic({ apiKey })(TIER_MODELS[tier]);
-}
-
 /**
  * Canonical LLM credential health check.
  * Distinguishes "configured but expired" from "ready" so callers
@@ -782,11 +776,6 @@ async function createOpenAIModel(tier: ModelTier): Promise<any> {
   }
 
   throw new Error(`No OpenAI API key or Codex OAuth. Set OPENAI_API_KEY or run \`codex login\`.`);
-}
-
-/** Direct entry for the routing layer — tries Codex OAuth first. */
-export async function createCodexModelAsync(tier: ModelTier = 'default'): Promise<any> {
-  return createOpenAIModel(tier);
 }
 
 /** Set API key at runtime (from dashboard UI). */

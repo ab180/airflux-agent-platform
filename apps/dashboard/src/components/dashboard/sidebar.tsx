@@ -105,7 +105,9 @@ function UserInfo() {
 }
 
 function TeamUserInfo() {
-  // Dynamic import to avoid hook call when SessionProvider isn't present
+  // Dynamic require to avoid hook call when SessionProvider isn't present;
+  // ESM `await import` would force this component to be async, which React doesn't allow.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { useSession: useSessionHook, signOut: signOutFn } = require("next-auth/react");
   const { data: session } = useSessionHook();
   if (!session?.user) return null;

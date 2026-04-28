@@ -67,11 +67,6 @@ export function isCodexCliAvailable(): boolean {
   }
 }
 
-export function resetCodexCliCache(): void {
-  cliAvailable = null;
-  lastCheckAt = 0;
-}
-
 /**
  * Send a prompt to Codex via CLI and get a response.
  * Uses `codex exec` mode for non-interactive execution.

@@ -3,6 +3,12 @@
 This directory is the only place in the server that may depend on
 Airbridge / Snowflake / Korean business terminology.
 
+> Reader summaries of the same boundary live in
+> [`README.md`](../../../../README.md#oss-split-경계--ab180-extensions) and
+> [`CONTRIBUTING.md`](../../../../CONTRIBUTING.md#oss-split-boundary--ab180-extensions).
+> This file is the authoritative source for the rules below; the other
+> two stay in sync with it.
+
 ## Rules
 
 - **No import from here in generic code.** `bootstrap.ts` is allowed to
