@@ -59,6 +59,9 @@ interface HealthResponse {
 export function LLMHealthBanner() {
   const [state, setState] = useState<LLMHealth | null>(null);
   const [mode, setMode] = useState<"local" | "production" | undefined>(undefined);
+  // `now` is captured by the same 30s tick that refreshes health, so all
+  // time-dependent renders below stay pure (no Date.now() during render).
+  const [now, setNow] = useState<number>(() => Date.now());
 
   useEffect(() => {
     let cancelled = false;
@@ -70,6 +73,7 @@ export function LLMHealthBanner() {
         if (cancelled) return;
         if (body.llm) setState(body.llm);
         if (body.mode) setMode(body.mode);
+        setNow(Date.now());
       } catch {
         /* silent — banner is best-effort */
       }
@@ -85,12 +89,12 @@ export function LLMHealthBanner() {
   if (!state) return null;
   const fh = state.rateLimit?.fiveHour;
   const sd = state.rateLimit?.sevenDay;
-  const observedAt = state.rateLimit?.observedAt ?? Date.now();
+  const observedAt = state.rateLimit?.observedAt ?? now;
   const codex = state.codex;
   const hasCodex = !!codex;
   const claudeThrottle = state.claudeThrottle;
   const claudeThrottleActive =
-    !!claudeThrottle && claudeThrottle.retryUntil > Date.now();
+    !!claudeThrottle && claudeThrottle.retryUntil > now;
   const isLocal = mode === "local";
 
   // Per-provider health — independent evaluation.
@@ -138,42 +142,6 @@ export function LLMHealthBanner() {
   const threshold = state.claudeUtilizationThreshold ?? state.oauthUtilizationThreshold;
   const fallbackReady = state.apiKeyFallbackAvailable === true;
 
-  function Bar({
-    label,
-    util,
-    resetAt,
-  }: {
-    label: string;
-    util: number;
-    resetAt?: number;
-  }) {
-    const pct = Math.min(100, Math.round(util * 100));
-    const crossed = typeof threshold === "number" ? util >= threshold : pct >= 90;
-    const color = crossed ? "bg-red-500/70" : pct >= 60 ? "bg-amber-500/70" : "bg-emerald-500/60";
-    return (
-      <div className="flex items-center gap-2">
-        <span className="font-mono text-[10px] opacity-70">{label}</span>
-        <div className="relative h-1.5 w-24 rounded-full bg-muted/50 overflow-hidden">
-          <div className={`h-full ${color}`} style={{ width: `${pct}%` }} />
-        </div>
-        <span className="font-mono text-[10px] opacity-80">{pct}%</span>
-        {isLocal && typeof resetAt === "number" && (
-          <span className="font-mono text-[10px] opacity-60">
-            · {formatTimeRemaining(resetAt, observedAt)}
-          </span>
-        )}
-      </div>
-    );
-  }
-
-  function StatusDot({ ok }: { ok: boolean }) {
-    return (
-      <span
-        className={`h-1.5 w-1.5 rounded-full ${ok ? "bg-emerald-500" : "bg-amber-500"}`}
-        aria-hidden
-      />
-    );
-  }
 
   const policyNote =
     typeof threshold === "number"
@@ -271,7 +239,7 @@ export function LLMHealthBanner() {
           </span>
           {isLocal && (
             <span className="font-mono text-[10px] opacity-70">
-              {formatTimeRemaining(claudeThrottle.retryUntil, Date.now())}
+              {formatTimeRemaining(claudeThrottle.retryUntil, now)}
             </span>
           )}
         </div>
@@ -284,13 +252,70 @@ export function LLMHealthBanner() {
         <div className="mt-2 border-t border-current/10 pt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
           <span className="font-mono text-[10px] opacity-70">Claude Max 쿼터</span>
           {fh?.utilization !== undefined && (
-            <Bar label="5h" util={fh.utilization} resetAt={fh.resetAt} />
+            <Bar
+              label="5h"
+              util={fh.utilization}
+              resetAt={fh.resetAt}
+              threshold={threshold}
+              isLocal={isLocal}
+              observedAt={observedAt}
+            />
           )}
           {sd?.utilization !== undefined && (
-            <Bar label="7d" util={sd.utilization} resetAt={sd.resetAt} />
+            <Bar
+              label="7d"
+              util={sd.utilization}
+              resetAt={sd.resetAt}
+              threshold={threshold}
+              isLocal={isLocal}
+              observedAt={observedAt}
+            />
           )}
           <span className="font-mono text-[10px] opacity-60">{policyNote}</span>
         </div>
+      )}
+    </div>
+  );
+}
+
+function StatusDot({ ok }: { ok: boolean }) {
+  return (
+    <span
+      className={`h-1.5 w-1.5 rounded-full ${ok ? "bg-emerald-500" : "bg-amber-500"}`}
+      aria-hidden
+    />
+  );
+}
+
+function Bar({
+  label,
+  util,
+  resetAt,
+  threshold,
+  isLocal,
+  observedAt,
+}: {
+  label: string;
+  util: number;
+  resetAt?: number;
+  threshold: number | undefined;
+  isLocal: boolean;
+  observedAt: number;
+}) {
+  const pct = Math.min(100, Math.round(util * 100));
+  const crossed = typeof threshold === "number" ? util >= threshold : pct >= 90;
+  const color = crossed ? "bg-red-500/70" : pct >= 60 ? "bg-amber-500/70" : "bg-emerald-500/60";
+  return (
+    <div className="flex items-center gap-2">
+      <span className="font-mono text-[10px] opacity-70">{label}</span>
+      <div className="relative h-1.5 w-24 rounded-full bg-muted/50 overflow-hidden">
+        <div className={`h-full ${color}`} style={{ width: `${pct}%` }} />
+      </div>
+      <span className="font-mono text-[10px] opacity-80">{pct}%</span>
+      {isLocal && typeof resetAt === "number" && (
+        <span className="font-mono text-[10px] opacity-60">
+          · {formatTimeRemaining(resetAt, observedAt)}
+        </span>
       )}
     </div>
   );

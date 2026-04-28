@@ -159,7 +159,7 @@ export default function PromptsPage() {
         <div>
           <h1 className="text-lg font-semibold tracking-tight">프롬프트</h1>
           <p className="text-[13px] text-muted-foreground">
-            에이전트별 시스템 프롬프트 버전 관리 · 저장한 "현재 버전"이
+            에이전트별 시스템 프롬프트 버전 관리 · 저장한 &ldquo;현재 버전&rdquo;이
             즉시 에이전트에 반영됩니다{" "}
             <span className="text-muted-foreground/70">
               (없으면 <code className="font-mono text-[11px]">settings/instructions/{"<agent>"}.md</code> 사용)
@@ -284,7 +284,7 @@ export default function PromptsPage() {
         {versions.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/50 py-12">
             <p className="text-[12px] text-muted-foreground">
-              프롬프트 버전이 없습니다. "새 버전"을 클릭하여 첫 프롬프트를 작성하세요.
+              프롬프트 버전이 없습니다. &ldquo;새 버전&rdquo;을 클릭하여 첫 프롬프트를 작성하세요.
             </p>
           </div>
         ) : (

@@ -174,7 +174,7 @@ export default function EvaluationPage() {
         {dataset.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border/50 py-12 text-center">
             <p className="text-[12px] text-muted-foreground">
-              "평가 실행" 버튼을 클릭하면 기본 테스트 케이스가 자동 생성됩니다.
+              &ldquo;평가 실행&rdquo; 버튼을 클릭하면 기본 테스트 케이스가 자동 생성됩니다.
             </p>
           </div>
         ) : (
